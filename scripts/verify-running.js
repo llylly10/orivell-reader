@@ -9,7 +9,7 @@ const fs = require("fs");
 const CHROME =
   process.env.CHROME_PATH ||
   "C:\\Users\\Administrator\\AppData\\Local\\ms-playwright\\chromium-1243\\chrome-win64\\chrome.exe";
-const BASE = "http://127.0.0.1:3200";
+const BASE = "http://127.0.0.1:3100";
 const OUT = path.join(__dirname, "..", "verify-shots");
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));

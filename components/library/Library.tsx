@@ -414,7 +414,7 @@ export function Library() {
                       <div className="lib-chips no-scrollbar">{tagChips(books.filter((b) => b.topic === T.key))}</div>
                     </div>
                     {T.custom && (
-                      <div className="shelf-manage" aria-label="Manage your shelf">
+                      <div className="shelf-manage" aria-label={t("lib.manageShelf")}>
                         {renamingShelf !== null ? (
                           <form
                             className="shelf-new-form"
@@ -424,18 +424,18 @@ export function Library() {
                               setRenamingShelf(null);
                             }}
                           >
-                            <input autoFocus value={renamingShelf} onChange={(e) => setRenamingShelf(e.target.value)} aria-label="Shelf name" className="shelf-new-input" maxLength={40} />
+                            <input autoFocus value={renamingShelf} onChange={(e) => setRenamingShelf(e.target.value)} aria-label={t("lib.shelfName")} className="shelf-new-input" maxLength={40} />
                             <button type="submit" className="add-btn" disabled={!renamingShelf.trim()}>
-                              Rename
+                              {t("lib.rename")}
                             </button>
                             <button type="button" className="lib-chip" onClick={() => setRenamingShelf(null)}>
-                              Cancel
+                              {t("common.cancel")}
                             </button>
                           </form>
                         ) : (
                           <>
                             <button type="button" className="lib-chip" onClick={() => setRenamingShelf(T.name)}>
-                              <PencilLine size={13} /> Rename shelf
+                              <PencilLine size={13} /> {t("lib.renameShelf")}
                             </button>
                             <button
                               type="button"
@@ -446,9 +446,9 @@ export function Library() {
                                 go({ view: "topics" });
                               }}
                             >
-                              <Trash2 size={13} /> Delete shelf
+                              <Trash2 size={13} /> {t("lib.deleteShelf")}
                             </button>
-                            <span className="self-center text-[12.5px] text-ink-3">Deleting moves its books to Unsorted.</span>
+                            <span className="self-center text-[12.5px] text-ink-3">{t("lib.deletingMovesToUnsorted")}</span>
                           </>
                         )}
                       </div>
@@ -502,12 +502,12 @@ export function Library() {
                       if (made) go({ view: "topics", topic: made.key });
                     }}
                   >
-                    <input autoFocus value={newShelfName} onChange={(e) => setNewShelfName(e.target.value)} placeholder="Name your shelf, e.g. Research to revisit" aria-label="New shelf name" className="shelf-new-input" maxLength={40} />
+                    <input autoFocus value={newShelfName} onChange={(e) => setNewShelfName(e.target.value)} placeholder={t("book.nameYourShelf")} aria-label={t("book.newShelfName")} className="shelf-new-input" maxLength={40} />
                     <button type="submit" className="add-btn" disabled={!newShelfName.trim()}>
-                      Create shelf
+                      {t("book.createShelf")}
                     </button>
                     <button type="button" className="lib-chip" onClick={() => setNewShelfName(null)}>
-                      Cancel
+                      {t("common.cancel")}
                     </button>
                   </form>
                 )}

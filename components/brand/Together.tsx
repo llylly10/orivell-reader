@@ -1,4 +1,5 @@
 import { BRAND } from "@/lib/brand";
+import { useT } from "@/lib/lang-context";
 
 /* Together AI marks, inline SVG with currentColor type (from the together skill). */
 
@@ -84,13 +85,14 @@ export function TogetherWordmark({ className = "h-4 w-auto" }: { className?: str
  * mark to sit beside it, for example in a footer column or a pricing card.
  */
 export function TogetherLink({ className = "" }: { className?: string }) {
+  const t = useT();
   return (
     <a
       href={BRAND.togetherUrl}
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Together AI"
-      data-tip="Models served by Together AI"
+      data-tip={t("brand.togetherModels")}
       className={`flex h-9 shrink-0 items-center rounded-sm text-ink opacity-75 transition-opacity duration-200 hover:opacity-100 ${className}`}
     >
       {/* The wordmark box includes descender room; lift it 1px so its letters center on the nav line. */}

@@ -535,11 +535,11 @@ function ReaderInner({ article }: { article: Article }) {
                 </div>
                 {article.bookmark ? (
                   <div className="focus-hide rise mt-6 rounded-[14px] border border-rule bg-bg-raised p-4 text-[14px] leading-relaxed text-ink-2" style={{ animationDelay: "180ms" }} role="note">
-                    <p className="font-medium text-ink">Saved as a link</p>
-                    <p className="mt-1">This page has too little text to read as an article in Gloss, so it was kept as a link to look at later. Open the original page to see it in full.</p>
+                    <p className="font-medium text-ink">{t("read.savedAsLinkTitle")}</p>
+                    <p className="mt-1">{t("read.savedAsLinkBody")}</p>
                     {article.sourceUrl && (
                       <a href={article.sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex h-9 items-center gap-1.5 rounded-full bg-ink px-4 text-[13px] font-medium text-bg">
-                        Open the original page <ArrowUpRight size={14} />
+                        {t("read.openOriginal")} <ArrowUpRight size={14} />
                       </a>
                     )}
                   </div>

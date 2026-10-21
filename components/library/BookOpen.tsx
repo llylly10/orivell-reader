@@ -265,12 +265,12 @@ export function BookOpen({
                       if (made) onShelve(book, { topic: made.key });
                     }}
                   >
-                    <input autoFocus value={newShelf} onChange={(e) => setNewShelf(e.target.value)} placeholder="Name your shelf" aria-label="New shelf name" className="shelf-new-input" maxLength={40} />
+                    <input autoFocus value={newShelf} onChange={(e) => setNewShelf(e.target.value)} placeholder={t("book.nameYourShelf")} aria-label={t("book.newShelfName")} className="shelf-new-input" maxLength={40} />
                     <button type="submit" className="add-btn" disabled={!newShelf.trim()}>
-                      Create &amp; move
+                      {t("book.createAndMove")}
                     </button>
                     <button type="button" className="ob-link" onClick={() => setNewShelf(null)}>
-                      Cancel
+                      {t("common.cancel")}
                     </button>
                   </form>
                 )}

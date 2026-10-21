@@ -39,8 +39,13 @@ export function LangProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(initial);
 
   // The reader may have picked a language before this provider mounted.
+  // The document's own `lang` is set here too, not only when the reader
+  // changes it by hand: on a first visit the language comes from the browser,
+  // and the document should say so for spellcheckers and screen readers.
   useEffect(() => {
-    setLangState(resolveLang());
+    const l = resolveLang();
+    setLangState(l);
+    document.documentElement.lang = l === "zh" ? "zh-CN" : "en";
   }, []);
 
   const setLang = useCallback((l: Lang) => {

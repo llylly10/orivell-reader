@@ -7,6 +7,9 @@ import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 
 let client: NeonQueryFunction<false, false> | null = null;
 
+/** True when a database is configured. The app works without one — only the account features need it. */
+export const hasDatabase = () => Boolean(process.env.DATABASE_URL);
+
 export function db() {
   if (!client) {
     const url = process.env.DATABASE_URL;

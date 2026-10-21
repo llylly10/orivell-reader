@@ -1,3 +1,5 @@
+"use client";
+
 import { BRAND } from "@/lib/brand";
 import { useT } from "@/lib/lang-context";
 

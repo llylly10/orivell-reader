@@ -1,3 +1,5 @@
+"use client";
+
 import { useT } from "@/lib/lang-context";
 
 /** Before the first words arrive: three lines of the pen's wash, shimmering. */

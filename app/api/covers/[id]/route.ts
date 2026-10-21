@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { loadCover } from "@/lib/db";
+import { hasDatabase, loadCover } from "@/lib/db";
 
 export const runtime = "nodejs";
 
@@ -7,6 +7,7 @@ export const runtime = "nodejs";
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
   if (!userId) return Response.json({ error: "Sign in to sync." }, { status: 401 });
+  if (!hasDatabase()) return Response.json({ error: "No database is configured, so nothing syncs." }, { status: 503 });
   const jpeg = await loadCover(userId, (await params).id);
   if (!jpeg) return Response.json({ error: "Not found." }, { status: 404 });
   return new Response(new Blob([jpeg as Uint8Array<ArrayBuffer>]), { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=31536000, immutable" } });

@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { GlossMark } from "@/components/brand/Gloss";
 import { useT } from "@/lib/lang-context";

@@ -11,6 +11,7 @@
     "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate.mjs"
   },
   "dependencies": {
+    "@clerk/localizations": "4.22.1",
     "@clerk/nextjs": "^7.9.13",
     "@llamaindex/liteparse-wasm": "2.15.1",
     "@mozilla/readability": "^0.6.0",

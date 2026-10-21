@@ -3,11 +3,13 @@
 import { useEffect } from "react";
 import { X } from "lucide-react";
 import { useStore } from "@/lib/store";
+import { useT } from "@/lib/lang-context";
 import { useReader } from "./context";
 
 /** A floating preview of the paragraph a citation points to. */
 export function Peek({ peek }: { peek: { n: number; rect: DOMRect } | null }) {
   const { ix } = useReader();
+  const t = useT();
   if (!peek) return null;
   const id = ix.byNumber.get(peek.n);
   const text = id ? ix.texts.get(id) ?? "" : "";
@@ -20,25 +22,27 @@ export function Peek({ peek }: { peek: { n: number; rect: DOMRect } | null }) {
     <div className="pop pointer-events-none fixed z-[70] p-4" style={{ ...style, width: w, ["--origin" as string]: below ? "top center" : "bottom center" }} role="tooltip">
       <p className="mb-1.5 text-[11.5px] font-semibold tabular-nums text-rubric-text">¶{peek.n}</p>
       <p className="line-clamp-6 font-serif text-[15px] leading-[1.5] text-ink">{text}</p>
-      <p className="mt-2 text-[11.5px] text-ink-4">Click to jump there</p>
+      <p className="mt-2 text-[11.5px] text-ink-4">{t("action.askAboutIt")}</p>
     </div>
   );
 }
 
-const KEYS: [string, string][] = [
-  ["Select text, then type", "Ask about the selection"],
-  ["/", "Ask about the whole text"],
-  ["J  K", "Next and previous paragraph"],
-  ["Enter", "Ask about the current paragraph"],
-  ["[  ]", "Previous and next gloss"],
-  ["B", "Gloss this text"],
-  ["N", "Notebook"],
-  ["F", "Focus mode"],
-  ["Esc", "Close or step back"],
-  ["?", "This list"],
+/** Built inside the component so the descriptions follow the reader's language. */
+const keysFor = (t: (key: string) => string): [string, string][] => [
+  ["Select text, then type", t("action.askHint")],
+  ["/", t("read.askWhole")],
+  ["J  K", t("keys.walkDown")],
+  ["Enter", t("keys.askBlock")],
+  ["[  ]", t("keys.nextGloss")],
+  ["B", t("brief.title")],
+  ["N", t("keys.notebook")],
+  ["F", t("keys.focus")],
+  ["Esc", t("keys.close")],
+  ["?", t("keys.keys")],
 ];
 
 export function Shortcuts() {
+  const t = useT();
   const open = useStore((s) => s.shortcutsOpen);
   const setUI = useStore((s) => s.setUI);
   useEffect(() => {
@@ -50,15 +54,15 @@ export function Shortcuts() {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-[80] grid place-items-center bg-ink/20 p-4 backdrop-blur-[2px]" onClick={() => setUI({ shortcutsOpen: false })} style={{ animation: "fade 0.2s" }}>
-      <div role="dialog" aria-label="Keyboard shortcuts" className="pop w-full max-w-[420px] p-6" onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-label={t("topbar.shortcuts")} className="pop w-full max-w-[420px] p-6" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-serif text-[22px] leading-none text-ink">Keys</h2>
-          <button type="button" aria-label="Close" data-tip="Close" data-tip-kbd="Esc" onClick={() => setUI({ shortcutsOpen: false })} className="grid size-8 place-items-center rounded-lg text-ink-3 hover:bg-sunk">
+          <h2 className="font-serif text-[22px] leading-none text-ink">{t("keys.title")}</h2>
+          <button type="button" aria-label={t("common.close")} data-tip={t("common.close")} data-tip-kbd="Esc" onClick={() => setUI({ shortcutsOpen: false })} className="grid size-8 place-items-center rounded-lg text-ink-3 hover:bg-sunk">
             <X size={16} />
           </button>
         </div>
         <dl className="divide-y divide-rule">
-          {KEYS.map(([k, v]) => (
+          {keysFor(t).map(([k, v]) => (
             <div key={k} className="flex items-center justify-between gap-4 py-2.5">
               <dt className="flex gap-1">
                 {k.includes(",") || k.length > 6
@@ -76,6 +80,7 @@ export function Shortcuts() {
 
 /** Resume toast and first-run hint share this little card. */
 export function Toast({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  const t = useT();
   return (
     <div
       role="status"
@@ -83,7 +88,7 @@ export function Toast({ children, onClose }: { children: React.ReactNode; onClos
       style={{ animation: "rise 0.45s var(--ease-spring) both" }}
     >
       {children}
-      <button type="button" aria-label="Dismiss" onClick={onClose} className="grid size-7 place-items-center rounded-full text-lens-mute hover:bg-lens-hover hover:text-lens-fg">
+      <button type="button" aria-label={t("arr.dismiss")} onClick={onClose} className="grid size-7 place-items-center rounded-full text-lens-mute hover:bg-lens-hover hover:text-lens-fg">
         <X size={14} />
       </button>
     </div>

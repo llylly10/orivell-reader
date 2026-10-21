@@ -5,6 +5,8 @@ import { createPortal } from "react-dom";
 import { ArrowRight, ArrowUpRight, ChevronDown, PencilLine, Star, Trash2 } from "lucide-react";
 import { allShelves, fmtMinutes, hash, hostOf, lookOf, shelfDef, tagsOf, type Book, type CustomShelf } from "@/lib/library";
 import { Cover, Glyph, Spine } from "./Book";
+import { useT, useLang } from "@/lib/lang-context";
+import { topicName } from "@/lib/i18n";
 
 export type Origin = { el: HTMLElement; kind: "spine" | "cover" };
 
@@ -82,13 +84,15 @@ export function BookOpen({
   const [phase, setPhase] = useState<"in" | "open" | "out" | "leaving">("in");
   const [renaming, setRenaming] = useState(false);
   const [newShelf, setNewShelf] = useState<string | null>(null);
+  const t = useT();
+  const { lang } = useLang();
   const bookRef = useRef<HTMLDivElement>(null);
   const shiftRef = useRef<HTMLDivElement>(null);
   const coverRef = useRef<HTMLDivElement>(null);
   const readRef = useRef<HTMLButtonElement>(null);
   const closing = useRef(false);
   const look = lookOf(book);
-  const t = shelfDef(book.topic, shelves);
+  const shelf = shelfDef(book.topic, shelves);
   const reduce = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const shift = g.wide ? g.W / 2 : 0;
   const coverZ = `translateZ(${g.D / 2}px)`;
@@ -204,9 +208,9 @@ export function BookOpen({
               <div className="ob-page-in scroll-thin">
                 <div className="ob-kicker">
                   {/* The topic it is shelved under, and the way to move it: one chip. */}
-                  <label className="ob-chip" style={{ ["--c" as string]: t.shades[0] }} data-tip="Move to another shelf">
-                    <Glyph k={t.key} size={15} label={book.topicName ?? t.name} />
-                    <span>{book.topicName ?? t.name}</span>
+                  <label className="ob-chip" style={{ ["--c" as string]: shelf.shades[0] }} data-tip={t("book.moveTopic")}>
+                    <Glyph k={shelf.key} size={15} label={book.topicName ?? shelf.name} />
+                    <span>{book.topicName ?? topicName(shelf.key, shelf.name, lang)}</span>
                     <ChevronDown size={13} strokeWidth={2.2} className="ob-chip-caret" aria-hidden />
                     <select
                       value={book.topic}
@@ -214,14 +218,14 @@ export function BookOpen({
                         if (e.target.value === "__new__") return setNewShelf("");
                         onShelve(book, { topic: e.target.value });
                       }}
-                      aria-label="Shelf"
+                      aria-label={t("book.topicAria")}
                     >
                       {allShelves(shelves).map((x) => (
                         <option key={x.key} value={x.key}>
-                          {x.custom ? `${x.name} (your shelf)` : x.name}
+                          {x.custom ? `${x.name} (${t("book.yourShelf")})` : topicName(x.key, x.name, lang)}
                         </option>
                       ))}
-                      {onCreateShelf && <option value="__new__">+ New shelf…</option>}
+                      {onCreateShelf && <option value="__new__">+ {t("book.newShelf")}</option>}
                     </select>
                   </label>
                   <span className="ob-tools">
@@ -229,22 +233,22 @@ export function BookOpen({
                       type="button"
                       className="ob-icon"
                       aria-pressed={book.favorite}
-                      aria-label={book.favorite ? "Remove from favourites" : "Add to favourites"}
-                      data-tip={book.favorite ? "Favourite" : "Add to favourites"}
+                      aria-label={book.favorite ? t("book.removeFavourite") : t("book.addFavourite")}
+                      data-tip={book.favorite ? t("book.favourite") : t("book.addFavourite")}
                       onClick={() => onShelve(book, { favorite: !book.favorite })}
                     >
                       <Star size={15} fill={book.favorite ? "currentColor" : "none"} />
                     </button>
                     {!book.sample && (
-                      <button type="button" className="ob-icon" aria-label="Rename" data-tip="Rename" onClick={() => setRenaming(true)}>
+                      <button type="button" className="ob-icon" aria-label={t("book.rename")} data-tip={t("book.rename")} onClick={() => setRenaming(true)}>
                         <PencilLine size={14} />
                       </button>
                     )}
                     <button
                       type="button"
                       className="ob-icon"
-                      aria-label={book.sample ? "Remove this sample" : "Remove from the library"}
-                      data-tip={book.sample ? "Remove this sample" : "Remove from the library"}
+                      aria-label={book.sample ? t("book.removeSample") : t("book.removeFromLibrary")}
+                      data-tip={book.sample ? t("book.removeSample") : t("book.removeFromLibrary")}
                       onClick={() => onRemove(book)}
                     >
                       <Trash2 size={14} />
@@ -282,7 +286,7 @@ export function BookOpen({
                   <h2 className="ob-title">{book.title}</h2>
                 ) : (
                   <h2 className="ob-title">
-                    <button type="button" className="ob-title-btn" data-tip="Rename" onClick={() => setRenaming(true)}>
+                    <button type="button" className="ob-title-btn" data-tip={t("book.rename")} onClick={() => setRenaming(true)}>
                       {book.title}
                     </button>
                   </h2>
@@ -300,15 +304,15 @@ export function BookOpen({
                   <p className="ob-tags">
                     {tagsOf(book).map((x) => (
                       <span key={x.key}>
-                        <Glyph k={x.key} size={15} /> {x.label}
+                        <Glyph k={x.key} size={15} /> {t(`tag.${x.key}`)}
                       </span>
                     ))}
                     {book.agent && (
                       <span>
-                        <Glyph k="agent" size={15} /> Shelved by your agent
+                        <Glyph k="agent" size={15} /> {t("book.shelvedByAgent")}
                       </span>
                     )}
-                    {book.sample && <span className="is-word">a sample from Gloss</span>}
+                    {book.sample && <span className="is-word">{t("book.sampleNote")}</span>}
                     {book.tags.map((x) => (
                       <span key={x} className="is-word">
                         {x}
@@ -321,25 +325,25 @@ export function BookOpen({
                     <span style={{ width: `${Math.round(book.pct * 100)}%` }} />
                   </span>
                   <span>
-                    {book.pct >= 1 ? "Read" : reading ? `${Math.round(book.pct * 100)}% read` : "Not started"}
-                    {book.highlights > 0 && ` · ${book.highlights} highlight${book.highlights === 1 ? "" : "s"}`}
+                    {book.pct >= 1 ? t("book.read") : reading ? t("book.percentRead", { n: Math.round(book.pct * 100) }) : t("book.notStarted")}
+                    {book.highlights > 0 && ` · ${t("book.highlights", { n: book.highlights })}`}
                   </span>
                 </div>
                 <div className="ob-actions">
                   {book.bookmark && book.url ? (
                     <a ref={readRef as never} href={book.url} target="_blank" rel="noreferrer" className="ob-read">
-                      Open the original page
+                      {t("book.openOriginal")}
                       <ArrowUpRight size={16} />
                     </a>
                   ) : (
                     <button ref={readRef} type="button" onClick={read} className="ob-read">
-                      {book.pct >= 1 ? "Read again" : reading ? "Continue reading" : "Start reading"}
+                      {book.pct >= 1 ? t("book.readAgain") : reading ? t("book.continueReading") : t("book.startReading")}
                       <ArrowRight size={16} />
                     </button>
                   )}
                   {book.bookmark && (
                     <button type="button" onClick={read} className="ob-link mt-2">
-                      View the saved link note
+                      {t("book.viewLinkNote")}
                     </button>
                   )}
                   <div className="ob-sub">
@@ -351,7 +355,7 @@ export function BookOpen({
                       <span />
                     )}
                     <button type="button" onClick={close} className="ob-link">
-                      Put it back <kbd>Esc</kbd>
+                      {t("book.putBack")} <kbd>Esc</kbd>
                     </button>
                   </div>
                 </div>
@@ -363,17 +367,17 @@ export function BookOpen({
               <div className="ob-face ob-cover-front">
                 <Cover book={book} look={look} draw />
               </div>
-              <div className="ob-face ob-cover-inside" style={{ ["--c" as string]: look.color, ["--c2" as string]: t.shades[3] }}>
+              <div className="ob-face ob-cover-inside" style={{ ["--c" as string]: look.color, ["--c2" as string]: shelf.shades[3] }}>
                 {/* A bookplate pasted inside the cover: whose it is, and when it was shelved. */}
                 <div className="ex-libris">
                   <div className="ex-art">
-                    <Glyph k={t.key} size={60} label={book.topicName ?? t.name} />
+                    <Glyph k={shelf.key} size={60} label={book.topicName ?? shelf.name} />
                   </div>
-                  <p className="ex-head">From the library of</p>
+                  <p className="ex-head">{t("bookplate.from")}</p>
                   <p className="ex-name">{owner}</p>
                   <span className="ex-rule" aria-hidden />
                   <p className="ex-meta">
-                    No. {plateNo}
+                    {t("bookplate.no", { n: plateNo })}
                     {book.added ? ` · ${shelved}` : ""}
                   </p>
                 </div>
@@ -391,6 +395,7 @@ export function BookOpen({
 function TitleField({ title, onDone }: { title: string; onDone: (title: string | null) => void }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const done = useRef(false);
+  const t = useT();
   const finish = (v: string | null) => {
     if (done.current) return;
     done.current = true;
@@ -409,7 +414,7 @@ function TitleField({ title, onDone }: { title: string; onDone: (title: string |
       className="ob-title ob-title-field"
       defaultValue={title}
       rows={1}
-      aria-label="Title"
+      aria-label={t("book.renameTitle")}
       spellCheck={false}
       onKeyDown={(e) => {
         if (e.key === "Enter") {

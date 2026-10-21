@@ -3,6 +3,8 @@
 import { ViewTransition } from "react";
 import { fmtMinutes, isCustomKey, lookOf, topicArtSrc, type Book, type ShelfDef } from "@/lib/library";
 import { Cover, Glyph } from "./Book";
+import { useT, useLang } from "@/lib/lang-context";
+import { topicBlurb, topicName } from "@/lib/i18n";
 
 const hours = (books: Book[]) => fmtMinutes(books.reduce((n, b) => n + b.minutes, 0));
 
@@ -19,32 +21,34 @@ function TopicArt({ t, name }: { t: ShelfDef; name?: string }) {
 
 /** Every topic as a card: its drawing, its name, and its books standing in a row. */
 export function TopicGrid({ topics, onPick }: { topics: { topic: ShelfDef; books: Book[] }[]; onPick: (t: ShelfDef) => void }) {
+  const t = useT();
+  const { lang } = useLang();
   return (
     <div className="topic-grid">
-      {topics.map(({ topic: t, books }, i) => (
+      {topics.map(({ topic: t2, books }, i) => (
         <button
-          key={t.key}
+          key={t2.key}
           type="button"
           className="topic-card"
-          onClick={() => onPick(t)}
-          style={{ ["--c" as string]: t.shades[0], ["--c-deep" as string]: t.shades[2], ["--i" as string]: i }}
+          onClick={() => onPick(t2)}
+          style={{ ["--c" as string]: t2.shades[0], ["--c-deep" as string]: t2.shades[2], ["--i" as string]: i }}
         >
-          <ViewTransition name={`topic-art-${t.key}`} share="lib-morph" default="none">
+          <ViewTransition name={`topic-art-${t2.key}`} share="lib-morph" default="none">
             <div className="topic-card-art">
-              <TopicArt t={t} />
+              <TopicArt t={t2} />
             </div>
           </ViewTransition>
           <div className="relative flex items-end justify-between gap-4 px-5 pb-1 pt-4">
             <div className="min-w-0">
-              <ViewTransition name={`topic-name-${t.key}`} share="lib-morph" default="none">
+              <ViewTransition name={`topic-name-${t2.key}`} share="lib-morph" default="none">
                 <h3 className="w-fit font-serif text-[27px] leading-[1.05] tracking-[-0.015em] text-ink">
-                  <Glyph k={t.key} size={30} className="mr-2 -mt-1" label={t.name} />
-                  {t.name}
-                  {t.custom && <span className="ml-2 align-middle text-[11px] font-sans font-medium text-ink-3">Your shelf</span>}
+                  <Glyph k={t2.key} size={30} className="mr-2 -mt-1" label={t2.name} />
+                  {topicName(t2.key, t2.name, lang)}
+                  {t2.custom && <span className="ml-2 align-middle text-[11px] font-sans font-medium text-ink-3">{t("book.yourShelf")}</span>}
                 </h3>
               </ViewTransition>
               <p className="mt-1.5 text-[13px] text-ink-3">
-                {books.length} {books.length === 1 ? "piece" : "pieces"} · {hours(books)}
+                {t("topics.pieces", { n: books.length })} · {hours(books)}
               </p>
             </div>
           </div>
@@ -65,26 +69,29 @@ export function TopicGrid({ topics, onPick }: { topics: { topic: ShelfDef; books
 }
 
 /** One topic, its books face-out, like the table at the front of a bookshop. */
-export function TopicPage({ topic: t, books, tools, onOpen }: { topic: ShelfDef; books: Book[]; tools?: React.ReactNode; onOpen: (b: Book, el: HTMLElement) => void }) {
+export function TopicPage({ topic: t2, books, tools, onOpen }: { topic: ShelfDef; books: Book[]; tools?: React.ReactNode; onOpen: (b: Book, el: HTMLElement) => void }) {
+  const t = useT();
+  const { lang } = useLang();
+  const reading = books.filter((b) => b.pct > 0 && b.pct < 1).length;
   return (
-    <div style={{ ["--c" as string]: t.shades[0] }}>
+    <div style={{ ["--c" as string]: t2.shades[0] }}>
       <header className="topic-head">
-        <ViewTransition name={`topic-art-${t.key}`} share="lib-morph" default="none">
+        <ViewTransition name={`topic-art-${t2.key}`} share="lib-morph" default="none">
           <div className="topic-head-art">
-            <TopicArt t={t} />
+            <TopicArt t={t2} />
           </div>
         </ViewTransition>
         <div className="relative max-w-[640px]">
-          <ViewTransition name={`topic-name-${t.key}`} share="lib-morph" default="none">
+          <ViewTransition name={`topic-name-${t2.key}`} share="lib-morph" default="none">
             <h2 className="w-fit font-serif text-[clamp(40px,6vw,64px)] leading-[0.98] tracking-[-0.025em] text-ink">
-              <Glyph k={t.key} size={64} className="mr-3 !align-[-0.12em] max-sm:!size-[44px]" label={t.name} />
-              {t.name}
+              <Glyph k={t2.key} size={64} className="mr-3 !align-[-0.12em] max-sm:!size-[44px]" label={t2.name} />
+              {topicName(t2.key, t2.name, lang)}
             </h2>
           </ViewTransition>
-          <p className="mt-4 text-pretty font-serif text-[18px] leading-[1.5] text-ink-2">{t.blurb}</p>
+          <p className="mt-4 text-pretty font-serif text-[18px] leading-[1.5] text-ink-2">{topicBlurb(t2.key, t2.blurb, lang)}</p>
           <p className="mt-3 text-[13px] text-ink-3">
-            {books.length} {books.length === 1 ? "piece" : "pieces"} · {hours(books)} of reading
-            {books.some((b) => b.pct > 0 && b.pct < 1) && ` · ${books.filter((b) => b.pct > 0 && b.pct < 1).length} in progress`}
+            {t("topics.pieces", { n: books.length })} · {t("topics.readingTime", { n: hours(books) })}
+            {reading > 0 && ` · ${t("topics.inProgress", { n: reading })}`}
           </p>
         </div>
       </header>
@@ -107,14 +114,14 @@ export function TopicPage({ topic: t, books, tools, onOpen }: { topic: ShelfDef;
               {b.pct > 0 && (
                 <>
                   <span aria-hidden>·</span>
-                  <span className={b.pct >= 1 ? "text-good" : "text-rubric-text"}>{b.pct >= 1 ? "Read" : `${Math.round(b.pct * 100)}%`}</span>
+                  <span className={b.pct >= 1 ? "text-good" : "text-rubric-text"}>{b.pct >= 1 ? t("book.read") : `${Math.round(b.pct * 100)}%`}</span>
                 </>
               )}
-              {b.favorite && <span aria-label="Favourite">⭐</span>}
+              {b.favorite && <span aria-label={t("book.favourite")}>⭐</span>}
             </p>
           </li>
         ))}
-        {!books.length && <li className="col-span-full py-16 text-center text-[14px] text-ink-3">Nothing here matches.</li>}
+        {!books.length && <li className="col-span-full py-16 text-center text-[14px] text-ink-3">{t("topics.nothingHere")}</li>}
       </ul>
     </div>
   );

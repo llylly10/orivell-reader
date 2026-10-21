@@ -9,6 +9,8 @@ import { normalizeUrl } from "@/lib/links";
 import { useStore } from "@/lib/store";
 import { Mark, MarkStack, type AgentMark } from "./AgentMarks";
 import { Glyph } from "./Book";
+import { useT } from "@/lib/lang-context";
+import { useLang } from "@/lib/lang-context";
 
 export type AddTab = "links" | "agent";
 
@@ -33,20 +35,22 @@ export function AddPanel({ tab, onTab, onClose, signedIn }: { tab: AddTab; onTab
     };
   }, [onClose]);
 
+  const t = useT();
+
   return createPortal(
     <div className="fixed inset-0 z-[80]" role="presentation">
       <div className="absolute inset-0 bg-ink/20 backdrop-blur-[2px]" style={{ animation: "fade 0.2s both" }} onClick={onClose} />
-      <section role="dialog" aria-modal aria-label="Add to the library" className="add-panel">
+      <section role="dialog" aria-modal aria-label={t("add.dialogLabel")} className="add-panel">
         <header className="flex items-center justify-between gap-3">
-          <div className="lib-sort !ml-0" role="tablist" aria-label="Add">
+          <div className="lib-sort !ml-0" role="tablist" aria-label={t("add.tabAria")}>
             <button type="button" role="tab" aria-selected={tab === "agent"} aria-checked={tab === "agent"} onClick={() => onTab("agent")}>
-              Connect an agent
+              {t("add.tabAgent")}
             </button>
             <button type="button" role="tab" aria-selected={tab === "links"} aria-checked={tab === "links"} onClick={() => onTab("links")}>
-              Save links manually
+              {t("add.tabLinks")}
             </button>
           </div>
-          <button type="button" aria-label="Close" data-tip="Close" data-tip-kbd="Esc" onClick={onClose} className="grid size-9 place-items-center rounded-full text-ink-3 transition-colors hover:bg-sunk hover:text-ink">
+          <button type="button" aria-label={t("common.close")} data-tip={t("common.close")} data-tip-kbd="Esc" onClick={onClose} className="grid size-9 place-items-center rounded-full text-ink-3 transition-colors hover:bg-sunk hover:text-ink">
             <X size={17} />
           </button>
         </header>
@@ -63,12 +67,13 @@ export function AddPanel({ tab, onTab, onClose, signedIn }: { tab: AddTab; onTab
  * holds its place, and the plus turns.
  */
 export function AddButton({ onClick, compact }: { onClick: () => void; compact?: boolean }) {
+  const t = useT();
   return (
     <button type="button" onClick={onClick} className={`lib-add${compact ? " is-compact" : ""}`}>
       <MarkStack size={compact ? 22 : 26} />
       <span className="min-w-0 text-left">
-        <span className="lib-add-title">Add articles</span>
-        {!compact && <span className="lib-add-sub">Connect an agent, or paste links</span>}
+        <span className="lib-add-title">{t("lib.addArticles")}</span>
+        {!compact && <span className="lib-add-sub">{t("lib.addArticlesHint")}</span>}
       </span>
       {!compact && (
         <span className="lib-add-plus" aria-hidden>
@@ -100,15 +105,16 @@ function Links() {
   const [over, setOver] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const t = useT();
   useEffect(() => ref.current?.focus(), []);
 
   const urls = [...new Set(text.split(/[\s,]+/).map((s) => s.trim()).filter(looksLikeUrl))];
 
   const fromExport = async (f: File) => {
     const found = linksIn(await f.text().catch(() => ""));
-    if (!found.length) return setNote(`No links found in ${f.name}.`);
+    if (!found.length) return setNote(t("add.noLinksInFile", { file: f.name }));
     setText((cur) => [cur.trim(), ...found].filter(Boolean).join("\n"));
-    setNote(`Found ${found.length} link${found.length === 1 ? "" : "s"} in ${f.name}.`);
+    setNote(t("add.foundLinks", { n: found.length, file: f.name }));
   };
 
   const save = async () => {
@@ -125,7 +131,7 @@ function Links() {
     setText(rest.join("\n"));
     setNote(
       all.length > BATCH
-        ? [rest.length ? `Saving ${BATCH} now; ${rest.length} more wait above for the next Save.` : `Saving ${fresh.length}.`, known ? `${known} already in your library.` : ""].filter(Boolean).join(" ")
+        ? [rest.length ? t("add.savingBatch", { done: BATCH, rest: rest.length }) : t("add.savingN", { n: fresh.length }), known ? t("add.alreadyCount", { n: known }) : ""].filter(Boolean).join(" ")
         : null
     );
     const set = (i: number, r: Partial<Row>) => setRows((cur) => cur.map((x, j) => (j === i ? { ...x, ...r } : x)));
@@ -145,13 +151,13 @@ function Links() {
 
   return (
     <div className="mt-5">
-      <p className="text-[19px] font-serif leading-tight text-ink">Save links to your library</p>
+      <p className="text-[19px] font-serif leading-tight text-ink">{t("add.title")}</p>
       <p className="mt-1 text-[13px] text-ink-3">
-        One or many, a line each. Gloss reads each page in and sorts it onto a topic. PDFs work too. Leaving Pocket, Instapaper or Raindrop?{" "}
+        {t("add.blurb")}{" "}
         <button type="button" onClick={() => fileRef.current?.click()} className="text-ink-2 underline decoration-rule-strong underline-offset-2 hover:text-ink">
-          Drop its export here
+          {t("add.dropExport")}
         </button>
-        .
+        {t("add.dropExportTail")}
       </p>
       <input
         ref={fileRef}
@@ -191,13 +197,13 @@ function Links() {
         placeholder={"https://paulgraham.com/greatwork.html\nhttps://..."}
         rows={4}
         className="add-text"
-        aria-label="Links to save"
+        aria-label={t("add.linksLabel")}
       />
       <div className="mt-3 flex items-center justify-between gap-3">
-        <span className="text-[12.5px] text-ink-4">{urls.length ? `${urls.length} link${urls.length === 1 ? "" : "s"}` : text.trim() ? "No links found yet" : ""}</span>
+        <span className="text-[12.5px] text-ink-4">{urls.length ? t("add.linkCount", { n: urls.length }) : text.trim() ? t("add.noLinksYet") : ""}</span>
         <button type="button" onClick={save} disabled={!urls.length || busy} className="add-btn">
           {busy && <Loader2 size={14} className="animate-spin" />}
-          {busy ? "Saving" : urls.length > 1 ? `Save ${Math.min(urls.length, BATCH)}` : "Save"}
+          {busy ? t("add.saving") : urls.length > 1 ? t("add.saveN", { n: Math.min(urls.length, BATCH) }) : t("add.save")}
         </button>
       </div>
       {note && <p className="mt-2 text-[12.5px] text-ink-3">{note}</p>}
@@ -211,7 +217,7 @@ function Links() {
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13.5px] text-ink">{r.title ?? r.url.replace(/^https?:\/\/(www\.)?/, "")}</span>
                 <span className="block truncate text-[12px] text-ink-3">
-                  {r.state === "saved" ? (r.bookmark ? "Saved as a link — too little text to read here, kept to look at later" : "On the shelf") : r.state === "already" ? "Already in your library" : r.state === "failed" ? r.error : r.state === "reading" ? "Reading" : "Waiting"}
+                  {r.state === "saved" ? (r.bookmark ? t("add.savedAsLink") : t("add.onShelf")) : r.state === "already" ? t("add.alreadyIn") : r.state === "failed" ? r.error : r.state === "reading" ? t("add.statusReading") : t("add.statusWaiting")}
                 </span>
               </span>
             </li>
@@ -238,23 +244,24 @@ function Bookmarklets() {
     readRef.current?.setAttribute("href", code("url"));
     saveRef.current?.setAttribute("href", code("save"));
   });
+  const t = useT();
   const pill = "inline-flex cursor-grab items-center gap-1.5 rounded-full border border-rule-strong bg-bg px-3 py-1.5 text-[13px] font-medium text-ink shadow-[var(--shadow-card)] active:cursor-grabbing";
   return (
     <div className="mt-6 border-t border-rule pt-5">
-      <p className="lib-label">From any page</p>
-      <p className="mt-1 text-[13px] text-ink-3">Drag one to your bookmarks bar, then click it on any article.</p>
+      <p className="lib-label">{t("add.bookmarklets")}</p>
+      <p className="mt-1 text-[13px] text-ink-3">{t("add.bookmarkletsHint")}</p>
       <div className="mt-3 flex flex-wrap gap-2">
-        <a ref={readRef} onClick={(e) => e.preventDefault()} data-tip="Drag me to your bookmarks bar" className={pill}>
-          <BookOpen size={14} className="text-ink-3" /> Read in Gloss
+        <a ref={readRef} onClick={(e) => e.preventDefault()} data-tip={t("add.dragMe")} className={pill}>
+          <BookOpen size={14} className="text-ink-3" /> {t("add.readInGloss")}
         </a>
-        <a ref={saveRef} onClick={(e) => e.preventDefault()} data-tip="Drag me to your bookmarks bar" className={pill}>
-          <BookmarkPlus size={14} className="text-ink-3" /> Save to Gloss
+        <a ref={saveRef} onClick={(e) => e.preventDefault()} data-tip={t("add.dragMe")} className={pill}>
+          <BookmarkPlus size={14} className="text-ink-3" /> {t("add.saveToGloss")}
         </a>
       </div>
       <details className="mt-3 text-[12.5px] text-ink-3">
-        <summary className="cursor-pointer select-none hover:text-ink-2">On a phone</summary>
+        <summary className="cursor-pointer select-none hover:text-ink-2">{t("add.onPhone")}</summary>
         <div className="mt-2">
-          <CopyBlock title="Bookmark any page, then edit the bookmark" body="Paste this as its address and name it Save to Gloss." text={code("save")} />
+          <CopyBlock title={t("add.phoneTitle")} body={t("add.phoneHint")} text={code("save")} />
         </div>
       </details>
     </div>
@@ -278,6 +285,9 @@ function Agent({ signedIn }: { signedIn: boolean }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const origin = typeof window !== "undefined" ? window.location.origin : "https://usegloss.io";
+  const t = useT();
+  const { lang } = useLang();
+  const locale = lang === "zh" ? "zh-CN" : "en-GB";
 
   useEffect(() => {
     if (!signedIn) return;
@@ -291,10 +301,10 @@ function Agent({ signedIn }: { signedIn: boolean }) {
     return (
       <div className="mt-5">
         <AgentIntro />
-        <p className="mt-4 text-[13.5px] text-ink-2">An agent saves to the library in your account, so it needs you signed in.</p>
+        <p className="mt-4 text-[13.5px] text-ink-2">{t("add.needsSignIn")}</p>
         <SignInButton mode="modal">
           <button type="button" className="add-btn mt-4">
-            Sign in to connect
+            {t("add.signInToConnect")}
           </button>
         </SignInButton>
       </div>
@@ -306,7 +316,7 @@ function Agent({ signedIn }: { signedIn: boolean }) {
     const res = await fetch("/api/agent-tokens", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label }) });
     const j = (await res.json().catch(() => ({}))) as { id?: string; token?: string; label?: string; error?: string };
     setBusy(false);
-    if (!res.ok || !j.token || !j.id) return setErr(j.error ?? "Could not make a connection. Try again.");
+    if (!res.ok || !j.token || !j.id) return setErr(j.error ?? t("add.connFailed"));
     setMade({ token: j.token, label: j.label ?? label });
     setConns((c) => [{ id: j.id!, label: j.label ?? label, createdAt: new Date().toISOString(), lastUsedAt: null }, ...(c ?? [])]);
   };
@@ -323,7 +333,7 @@ function Agent({ signedIn }: { signedIn: boolean }) {
         <Setup token={made.token} label={made.label} origin={origin} />
       ) : (
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <div className="lib-sort !ml-0" role="radiogroup" aria-label="Which agent">
+          <div className="lib-sort !ml-0" role="radiogroup" aria-label={t("add.whichAgent")}>
             {LABELS.map((l) => (
               <button key={l.label} type="button" role="radio" aria-checked={label === l.label} onClick={() => setLabel(l.label)} className="inline-flex items-center gap-1.5">
                 {l.mark && <Mark k={l.mark} size={14} />}
@@ -333,25 +343,25 @@ function Agent({ signedIn }: { signedIn: boolean }) {
           </div>
           <button type="button" onClick={create} disabled={busy} className="add-btn">
             {busy && <Loader2 size={14} className="animate-spin" />}
-            Make a connection
+            {t("add.makeConnection")}
           </button>
           {err && <p className="w-full text-[12.5px] text-rubric-text">{err}</p>}
         </div>
       )}
       {conns && conns.length > 0 && (
         <div className="mt-6">
-          <p className="lib-label">Connected</p>
+          <p className="lib-label">{t("add.connected")}</p>
           <ul className="mt-2 divide-y divide-rule">
             {conns.map((c) => (
               <li key={c.id} className="flex items-center gap-3 py-2.5 text-[13px]">
                 <span className="min-w-0 flex-1">
                   <span className="font-medium text-ink">{c.label}</span>
                   <span className="ml-2 text-ink-3">
-                    {c.lastUsedAt ? `last used ${new Date(c.lastUsedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : "not used yet"}
+                    {c.lastUsedAt ? t("add.lastUsed", { date: new Date(c.lastUsedAt).toLocaleDateString(locale, { day: "numeric", month: "short" }) }) : t("add.notUsedYet")}
                   </span>
                 </span>
                 <button type="button" onClick={() => revoke(c.id)} className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12.5px] text-ink-3 transition-colors hover:bg-sunk hover:text-ink">
-                  <Trash2 size={13} /> Revoke
+                  <Trash2 size={13} /> {t("add.revoke")}
                 </button>
               </li>
             ))}
@@ -363,14 +373,13 @@ function Agent({ signedIn }: { signedIn: boolean }) {
 }
 
 function AgentIntro() {
+  const t = useT();
   return (
     <div className="flex items-start gap-3.5">
       <Glyph k="agent" size={46} className="shrink-0" />
       <div>
-        <p className="font-serif text-[19px] leading-tight text-ink">Let your agent shelve for you</p>
-        <p className="mt-1 text-[13px] leading-[1.5] text-ink-3">
-          Gloss has an MCP server. Give it to Grok Bot, Claude or ChatGPT, then ask: &ldquo;go through my X bookmarks from this month and save the articles to my Gloss library.&rdquo; Each one is read in, sorted onto a topic, and on your shelves the next time you open Gloss.
-        </p>
+        <p className="font-serif text-[19px] leading-tight text-ink">{t("add.agentShelve")}</p>
+        <p className="mt-1 text-[13px] leading-[1.5] text-ink-3">{t("add.agentIntro")}</p>
       </div>
     </div>
   );
@@ -380,6 +389,7 @@ const PROMPT = "Go through my X bookmarks from the last month, find the ones tha
 
 function Setup({ token, label, origin }: { token: string; label: string; origin: string }) {
   const url = `${origin}/mcp`;
+  const t = useT();
   const steps: { title: string; body: string; copy: string }[] =
     label === "Grok Bot" || label === "Grok"
       ? [
@@ -396,17 +406,18 @@ function Setup({ token, label, origin }: { token: string; label: string; origin:
           ];
   return (
     <div className="mt-5 space-y-3">
-      <p className="text-[13px] text-good">Made. This token is shown once: copy it now.</p>
+      <p className="text-[13px] text-good">{t("add.tokenOnce")}</p>
       {steps.map((s) => (
         <CopyBlock key={s.title} title={s.title} body={s.body} text={s.copy} />
       ))}
-      <CopyBlock title="Then ask it something like" body="Agents save the article a post links to. When the post is the piece, like an X Article or a long post, they send its text." text={PROMPT} />
+      <CopyBlock title={t("add.thenAsk")} body={t("add.thenAskBody")} text={PROMPT} />
     </div>
   );
 }
 
 function CopyBlock({ title, body, text }: { title: string; body: string; text: string }) {
   const [copied, setCopied] = useState(false);
+  const t = useT();
   return (
     <div className="rounded-[14px] border border-rule bg-bg p-3">
       <div className="flex items-start justify-between gap-3">
@@ -426,7 +437,7 @@ function CopyBlock({ title, body, text }: { title: string; body: string; text: s
           className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-sunk px-2.5 py-1 text-[12px] font-medium text-ink-2 transition-colors hover:text-ink"
         >
           {copied ? <Check size={12} className="text-good" /> : <Copy size={12} />}
-          {copied ? "Copied" : "Copy"}
+          {copied ? t("common.copied") : t("common.copy")}
         </button>
       </div>
       <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded-lg bg-sunk px-2.5 py-2 text-[11.5px] leading-relaxed text-ink-2">{text}</pre>

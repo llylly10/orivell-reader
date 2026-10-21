@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { KeyRound } from "lucide-react";
 import { validateKey } from "@/lib/ask";
 import { BRAND } from "@/lib/brand";
+import { useT } from "@/lib/lang-context";
 import { Popover, barBtn } from "./Popover";
 
 const STORAGE_KEY = "together:api-key";
@@ -13,6 +14,7 @@ type Free = { left: number; signedIn: boolean };
 
 /** Bring your own Together key. Stored in this browser only. A little reading a day is free without one. */
 export function KeyMenu() {
+  const t = useT();
   const [key, setKey] = useState("");
   const [house, setHouse] = useState<boolean | null>(null);
   const [free, setFree] = useState<Free | null>(null);
@@ -35,12 +37,12 @@ export function KeyMenu() {
   }, []);
 
   const spent = house === false || free?.left === 0;
-  const status = key ? "Your key" : spent ? "Add a key" : free && free.left <= 0.25 ? "Low on free use" : null;
+  const status = key ? t("key.title") : spent ? t("topbar.addKey") : free && free.left <= 0.25 ? t("key.lowFree") : null;
 
   return (
     <Popover
-      label="Together API key"
-      tip={key ? "Using your Together key" : "Add your Together key"}
+      label={t("key.title")}
+      tip={key ? t("key.hint") : t("topbar.addKey")}
       width={320}
       triggerClass={barBtn}
       openOn="gloss:key"
@@ -57,6 +59,7 @@ export function KeyMenu() {
 }
 
 function KeyPanel({ current, house, free, onSave, close }: { current: string; house: boolean | null; free: Free | null; onSave: (v: string) => void; close: () => void }) {
+  const t = useT();
   const [draft, setDraft] = useState(current);
   const [state, setState] = useState<"idle" | "checking" | "bad">("idle");
 
@@ -85,18 +88,14 @@ function KeyPanel({ current, house, free, onSave, close }: { current: string; ho
 
   return (
     <div>
-      <p className="text-[13.5px] font-medium text-ink">Your Together API key</p>
+      <p className="text-[13.5px] font-medium text-ink">{t("key.title")}</p>
       <p className="mt-1 text-[12.5px] leading-snug text-ink-3">
-        {current
-          ? "Answers and reading aloud use your key, with no daily limit."
-          : house && free
-            ? `Free use resets each day${free.signedIn ? "" : ", and signing in doubles it"}. After that, answers need your key. Reading aloud always does.`
-            : "Add your key to start asking."}
+        {current ? t("key.hint") : house && free ? t("key.signInMore") : t("topbar.addKey")}
       </p>
       {!current && house && free && (
         <div className="mt-3">
           <div className="flex items-baseline justify-between text-[11.5px] text-ink-3">
-            <span>Free today</span>
+            <span>{t("key.freeToday")}</span>
             <span className="tabular-nums">{free.left > 0 ? `${Math.max(1, Math.round(free.left * 100))}% left` : "Used up"}</span>
           </div>
           <span className="mt-1.5 block h-[3px] overflow-hidden rounded-full bg-rule" aria-hidden>
@@ -116,7 +115,7 @@ function KeyPanel({ current, house, free, onSave, close }: { current: string; ho
         placeholder="tgp_v1_..."
         autoComplete="off"
         spellCheck={false}
-        aria-label="Together API key"
+        aria-label={t("key.title")}
         className="mt-3 h-9 w-full rounded-lg border border-rule bg-bg px-3 text-[13px] tracking-wide text-ink outline-none focus-visible:outline-none placeholder:text-ink-4 focus:border-rule-strong"
       />
       {state === "bad" && <p className="mt-2 text-[12.5px] text-rubric-text">Together rejected that key. Check it and try again.</p>}
@@ -138,7 +137,7 @@ function KeyPanel({ current, house, free, onSave, close }: { current: string; ho
               }}
               className="h-8 rounded-lg px-3 text-[12.5px] font-medium text-ink-2 hover:bg-sunk"
             >
-              Clear
+              {t("key.remove")}
             </button>
           )}
           <button
@@ -147,7 +146,7 @@ function KeyPanel({ current, house, free, onSave, close }: { current: string; ho
             disabled={state === "checking"}
             className="h-8 rounded-lg bg-ink px-3.5 text-[12.5px] font-medium text-bg disabled:opacity-60"
           >
-            {state === "checking" ? "Checking" : "Save"}
+            {state === "checking" ? t("common.loading") : t("key.save")}
           </button>
         </div>
       </div>

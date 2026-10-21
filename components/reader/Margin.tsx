@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { anchorToRange, blockEl } from "@/lib/anchor";
 import { MARKERS } from "@/lib/settings";
 import { useStore, type Gloss, type Highlight } from "@/lib/store";
+import { useT } from "@/lib/lang-context";
 import { GlossCard, marginStyle } from "./GlossCard";
 
 /** Room between notes; one-line notes in a crowded stretch sit close, like a list. */
@@ -62,6 +63,7 @@ export function Margin({
   onOpenNote: (h: Highlight) => void;
 }) {
   const colRef = useRef<HTMLDivElement>(null);
+  const t = useT();
   const cards = useRef(new Map<string, HTMLElement>());
   const activeGloss = useStore((s) => s.activeGloss);
   const activeHighlight = useStore((s) => s.activeHighlight);
@@ -165,7 +167,7 @@ export function Margin({
 
   return (
     <div ref={colRef} className="relative" style={{ minHeight: layout.height + 40 }}>
-      {glosses.length === 0 && notes.length === 0 && <EmptyMargin top={layout.hintTop} />}
+      {glosses.length === 0 && notes.length === 0 && <EmptyMargin top={layout.hintTop} t={t} />}
 
       <svg className="pointer-events-none absolute top-0 overflow-visible" style={{ left: -gutter, width: gutter, height: Math.max(1, layout.height) }} aria-hidden>
         {lead.map((id) => {
@@ -213,7 +215,7 @@ export function Margin({
           onClick={() => onOpenNote(h)}
           className={`mnote${active === h.id ? " is-active" : ""}`}
           style={{ ...marginStyle(layout.tops[h.id], !placed.current.has(h.id)), ["--note-c" as string]: MARKERS.find((m) => m.key === (h.color ?? "yellow"))?.color }}
-          aria-label={`Your note: ${h.note}. Edit note.`}
+          aria-label={t("card.yourNote")}
         >
           <span className="line-clamp-4 whitespace-pre-line">{h.note}</span>
         </button>
@@ -222,14 +224,14 @@ export function Margin({
   );
 }
 
-function EmptyMargin({ top }: { top: number }) {
+function EmptyMargin({ top, t }: { top: number; t: (key: string) => string }) {
   return (
     <div
       className="rise absolute inset-x-0 border-l-[1.5px] border-rule-strong py-1 pl-[15px] text-[13px] leading-relaxed text-ink-3"
       style={{ top, animationDelay: "500ms" }}
     >
-      <p className="font-medium text-ink-2">This area is for notes.</p>
-      <p className="mt-1">Select any passage, then just start typing to ask.</p>
+      <p className="font-medium text-ink-2">{t("read.marginEmpty")}</p>
+      <p className="mt-1">{t("read.marginEmptyHint")}</p>
     </div>
   );
 }

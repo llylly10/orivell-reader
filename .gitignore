@@ -7,3 +7,8 @@ node_modules
 next-env.d.ts
 .DS_Store
 .claude/
+.clerk/
+
+# local verification artefacts
+verify-shots/
+upstream-shots/

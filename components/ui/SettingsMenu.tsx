@@ -2,12 +2,14 @@
 
 import { useState, type MouseEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import { AlignJustify, AlignLeft, Focus, Headphones, Map as MapIcon, Minus, Paintbrush, Pilcrow, Plus, RotateCcw } from "lucide-react";
+import { AlignJustify, AlignLeft, Focus, Headphones, Languages, Map as MapIcon, Minus, Paintbrush, Pilcrow, Plus, RotateCcw } from "lucide-react";
 import { MODELS, type ModelKey } from "@/lib/models";
 import { applySettings, DEFAULT_SETTINGS, FACES, MARKERS, PENS, resolveTheme, THEMES, type Settings } from "@/lib/settings";
 import { useStore } from "@/lib/store";
 import { Popover, barBtn } from "./Popover";
 import { setLibraryPrefs, useLibraryPrefs } from "@/lib/library-prefs";
+import { LANGS, type Lang } from "@/lib/i18n";
+import { useLang, useT } from "@/lib/lang-context";
 
 function Seg<T extends string>({ value, options, onChange, label }: { value: T; options: { key: T; label: ReactNode }[]; onChange: (v: T) => void; label: string }) {
   return (
@@ -93,24 +95,54 @@ function Swatch({ theme, on }: { theme: (typeof THEMES)[number]; on: boolean }) 
 /** The library's one setting: a painted cover for every text. Off by default, since each one is an image model call. */
 function PaintedCovers() {
   const { paintedCovers } = useLibraryPrefs();
+  const t = useT();
   return (
     <div className="flex items-center justify-between gap-3 border-t border-rule pt-3.5">
       <div className="min-w-0">
         <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-ink-2">
-          <Paintbrush size={13} /> Painted covers
+          <Paintbrush size={13} /> {t("lib.paintedCovers")}
         </p>
-        <p className="mt-0.5 text-[11.5px] leading-snug text-ink-3">A picture for each text in your library, about 2¢ each.</p>
+        <p className="mt-0.5 text-[11.5px] leading-snug text-ink-3">{t("lib.paintedCoversHint")}</p>
       </div>
       <button
         type="button"
         role="switch"
         aria-checked={paintedCovers}
-        aria-label="Painted covers"
+        aria-label={t("lib.paintedCovers")}
         onClick={() => setLibraryPrefs({ paintedCovers: !paintedCovers })}
         className={`relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors ${paintedCovers ? "bg-[var(--rubric)]" : "bg-rule-strong"}`}
       >
         <span className={`absolute left-[3px] top-[3px] size-4 rounded-full bg-raised shadow transition-transform duration-200 ${paintedCovers ? "translate-x-4" : ""}`} />
       </button>
+    </div>
+  );
+}
+
+/** The language the whole interface is written in. First on the list: it changes every other label. */
+function LanguageRow() {
+  const { lang, setLang, t } = useLang();
+  return (
+    <div className="flex items-center justify-between gap-3 border-t border-rule pt-3.5">
+      <div className="flex min-w-0 items-center gap-1.5 text-[12.5px] font-medium text-ink-2">
+        <Languages size={13} />
+        <span>{t("settings.language")}</span>
+      </div>
+      <div role="radiogroup" aria-label={t("settings.language")} className="grid shrink-0 grid-cols-2 gap-[3px] rounded-[10px] bg-sunk p-[3px]">
+        {LANGS.map((l) => (
+          <button
+            key={l.key}
+            type="button"
+            role="radio"
+            aria-checked={lang === l.key}
+            onClick={() => setLang(l.key as Lang)}
+            className={`inline-flex h-7 items-center justify-center rounded-[8px] px-2.5 text-[12.5px] font-medium transition-colors ${
+              lang === l.key ? "bg-pill text-ink shadow-[0_1px_2px_rgb(0_0_0/0.1)]" : "text-ink-3 hover:text-ink"
+            }`}
+          >
+            {l.native}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -126,6 +158,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
   const setSettings = useStore((s) => s.setSettings);
   const focusMode = useStore((s) => s.focusMode);
   const setUI = useStore((s) => s.setUI);
+  const t = useT();
   const [tab, setTab] = useState<"look" | "text" | "answers">("look");
 
   const set = (patch: Partial<Settings>) => {
@@ -182,19 +215,19 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
   };
 
   return (
-    <Popover label="Appearance and answers" tip="Appearance" width={compact ? 316 : 348} triggerClass={barBtn} trigger={<span className="block translate-y-[0.5px] font-serif text-[18px] leading-none">Aa</span>}>
+    <Popover label={t("topbar.appearance")} tip={t("topbar.appearanceTip")} width={compact ? 316 : 348} triggerClass={barBtn} trigger={<span className="block translate-y-[0.5px] font-serif text-[18px] leading-none">Aa</span>}>
       {() => (
         <div>
           {!compact && (
             <div className="mb-4">
               <Seg
-                label="Settings section"
+                label={t("settings.section")}
                 value={tab}
                 onChange={setTab}
                 options={[
-                  { key: "look", label: "Look" },
-                  { key: "text", label: "Text" },
-                  { key: "answers", label: "Answers" },
+                  { key: "look", label: t("settings.look") },
+                  { key: "text", label: t("settings.text") },
+                  { key: "answers", label: t("settings.answers") },
                 ]}
               />
             </div>
@@ -203,25 +236,27 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
           {(compact || tab === "look") && (
             <div className="space-y-3.5">
               <div>
-                <p className="mb-2.5 text-[12.5px] text-ink-3">Theme</p>
+                <p className="mb-2.5 text-[12.5px] text-ink-3">{t("settings.theme")}</p>
                 <div className="grid grid-cols-6 gap-2">
-                  {THEMES.map((t) => (
+                  {THEMES.map((th) => (
                     <button
-                      key={t.key}
+                      key={th.key}
                       type="button"
-                      onClick={(e) => pickTheme(t.key, e)}
-                      aria-pressed={settings.theme === t.key}
-                      data-tip={t.key === "auto" ? "Follows your system" : undefined}
+                      onClick={(e) => pickTheme(th.key, e)}
+                      aria-pressed={settings.theme === th.key}
+                      data-tip={th.key === "auto" ? t("settings.themeAutoTip") : undefined}
                       className="group flex flex-col items-center gap-1.5 rounded-[12px] focus-visible:outline-offset-4"
                     >
-                      <Swatch theme={t} on={settings.theme === t.key} />
-                      <span className={`text-[11px] leading-none transition-colors ${settings.theme === t.key ? "font-medium text-ink" : "text-ink-3 group-hover:text-ink-2"}`}>{t.label}</span>
+                      <Swatch theme={th} on={settings.theme === th.key} />
+                      <span className={`text-[11px] leading-none transition-colors ${settings.theme === th.key ? "font-medium text-ink" : "text-ink-3 group-hover:text-ink-2"}`}>
+                        {t(`theme.${th.key}`)}
+                      </span>
                     </button>
                   ))}
                 </div>
               </div>
 
-              <Row label="Pen">
+              <Row label={t("settings.pen")}>
                 <div className="flex items-center gap-2">
                   {PENS.map((p) => (
                     <button
@@ -229,20 +264,20 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
                       type="button"
                       onClick={() => set({ pen: p.key })}
                       aria-pressed={settings.pen === p.key}
-                      aria-label={`${p.label} pen`}
-                      data-tip={p.label}
+                      aria-label={t("settings.penTip", { name: t(`pen.${p.key}`) })}
+                      data-tip={t(`pen.${p.key}`)}
                       className={`grid size-7 place-items-center rounded-full transition-[box-shadow,transform] active:scale-90 ${settings.pen === p.key ? "shadow-[0_0_0_2px_var(--bg-raised),0_0_0_3.5px_var(--ink-3)]" : ""}`}
                     >
                       <span className="size-5 rounded-full" style={{ background: dark ? p.dark : p.light }} />
                     </button>
                   ))}
-                  <span className="ml-1 text-[12px] text-ink-3">{PENS.find((p) => p.key === settings.pen)?.label}</span>
+                  <span className="ml-1 text-[12px] text-ink-3">{t(`pen.${PENS.find((p) => p.key === settings.pen)?.key}`)}</span>
                 </div>
               </Row>
 
               {!compact && (
                 <>
-                  <Row label="Highlighter">
+                  <Row label={t("settings.marker")}>
                     <div className="flex items-center gap-2">
                       {MARKERS.map((m) => (
                         <button
@@ -250,32 +285,33 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
                           type="button"
                           onClick={() => set({ marker: m.key })}
                           aria-pressed={settings.marker === m.key}
-                          aria-label={`${m.label} highlighter`}
-                          data-tip={m.label}
+                          aria-label={t("settings.markerTip", { name: t(`marker.${m.key}`) })}
+                          data-tip={t(`marker.${m.key}`)}
                           className={`grid size-7 place-items-center rounded-full transition-[box-shadow,transform] active:scale-90 ${settings.marker === m.key ? "shadow-[0_0_0_2px_var(--bg-raised),0_0_0_3.5px_var(--ink-3)]" : ""}`}
                         >
                           <span className="h-3 w-5 -rotate-12 rounded-[3px] opacity-80" style={{ background: m.color }} />
                         </button>
                       ))}
-                      <span className="ml-1 text-[12px] text-ink-3">{MARKERS.find((m) => m.key === settings.marker)?.label}</span>
+                      <span className="ml-1 text-[12px] text-ink-3">{t(`marker.${MARKERS.find((m) => m.key === settings.marker)?.key}`)}</span>
                     </div>
                   </Row>
                   <div className="grid grid-cols-2 gap-1.5 border-t border-rule pt-3.5">
-                    <Chip label="Numbers" icon={<Pilcrow size={14} />} on={settings.numbers} onChange={(v) => set({ numbers: v })} />
-                    <Chip label="Map" icon={<MapIcon size={14} />} on={settings.rail} onChange={(v) => set({ rail: v })} />
-                    <Chip label="Focus" icon={<Focus size={14} />} on={focusMode} onChange={(v) => setUI({ focusMode: v })} />
-                    <Chip label="Listen" icon={<Headphones size={14} />} on={settings.listen} onChange={(v) => set({ listen: v })} />
+                    <Chip label={t("settings.numbers")} icon={<Pilcrow size={14} />} on={settings.numbers} onChange={(v) => set({ numbers: v })} />
+                    <Chip label={t("settings.map")} icon={<MapIcon size={14} />} on={settings.rail} onChange={(v) => set({ rail: v })} />
+                    <Chip label={t("settings.focus")} icon={<Focus size={14} />} on={focusMode} onChange={(v) => setUI({ focusMode: v })} />
+                    <Chip label={t("settings.listen")} icon={<Headphones size={14} />} on={settings.listen} onChange={(v) => set({ listen: v })} />
                   </div>
                 </>
               )}
               <PaintedCovers />
+              <LanguageRow />
             </div>
           )}
 
           {!compact && tab === "text" && (
             <div className="space-y-3.5">
               <div>
-                <p className="mb-2.5 text-[12.5px] text-ink-3">Typeface</p>
+                <p className="mb-2.5 text-[12.5px] text-ink-3">{t("settings.typeface")}</p>
                 <div className="grid grid-cols-4 gap-2">
                   {FACES.map((f) => (
                     <button
@@ -290,14 +326,14 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
                       <span className="text-[22px] leading-none text-ink" style={{ fontFamily: f.css }}>
                         Ag
                       </span>
-                      <span className={`text-[11px] leading-none ${settings.face === f.key ? "font-medium text-ink" : "text-ink-3"}`}>{f.label}</span>
+                      <span className={`text-[11px] leading-none ${settings.face === f.key ? "font-medium text-ink" : "text-ink-3"}`}>{t(`face.${f.key}`)}</span>
                     </button>
                   ))}
                 </div>
               </div>
-              <Row label="Size">
+              <Row label={t("settings.size")}>
                 <div className="flex items-center gap-1.5">
-                  <button type="button" aria-label="Smaller text" data-tip="Smaller" onClick={() => size(settings.size - 1)} className="grid size-7 place-items-center rounded-lg text-ink-2 transition-transform hover:bg-sunk active:scale-90">
+                  <button type="button" aria-label={t("settings.smaller")} data-tip={t("settings.smallerTip")} onClick={() => size(settings.size - 1)} className="grid size-7 place-items-center rounded-lg text-ink-2 transition-transform hover:bg-sunk active:scale-90">
                     <Minus size={14} />
                   </button>
                   <input
@@ -306,58 +342,58 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
                     max={28}
                     value={settings.size}
                     onChange={(e) => size(Number(e.target.value))}
-                    aria-label="Text size"
+                    aria-label={t("settings.sizeAria")}
                     className="h-1 min-w-0 flex-1 accent-[var(--rubric)]"
                   />
-                  <button type="button" aria-label="Larger text" data-tip="Larger" onClick={() => size(settings.size + 1)} className="grid size-7 place-items-center rounded-lg text-ink-2 transition-transform hover:bg-sunk active:scale-90">
+                  <button type="button" aria-label={t("settings.larger")} data-tip={t("settings.largerTip")} onClick={() => size(settings.size + 1)} className="grid size-7 place-items-center rounded-lg text-ink-2 transition-transform hover:bg-sunk active:scale-90">
                     <Plus size={14} />
                   </button>
                   <span className="w-6 text-right text-[12px] tabular-nums text-ink-3">{settings.size}</span>
                 </div>
               </Row>
-              <Row label="Spacing">
+              <Row label={t("settings.spacing")}>
                 <Seg
-                  label="Line spacing"
+                  label={t("settings.lineSpacing")}
                   value={settings.leading}
                   onChange={(v) => set({ leading: v })}
                   options={[
-                    { key: "tight", label: "Snug" },
-                    { key: "normal", label: "Even" },
-                    { key: "loose", label: "Airy" },
+                    { key: "tight", label: t("opt.snug") },
+                    { key: "normal", label: t("opt.even") },
+                    { key: "loose", label: t("opt.airy") },
                   ]}
                 />
               </Row>
-              <Row label="Width">
+              <Row label={t("settings.width")}>
                 <Seg
-                  label="Column width"
+                  label={t("settings.columnWidth")}
                   value={settings.width}
                   onChange={(v) => set({ width: v })}
                   options={[
-                    { key: "narrow", label: "Narrow" },
-                    { key: "normal", label: "Even" },
-                    { key: "wide", label: "Wide" },
+                    { key: "narrow", label: t("opt.narrow") },
+                    { key: "normal", label: t("opt.even") },
+                    { key: "wide", label: t("opt.wide") },
                   ]}
                 />
               </Row>
-              <Row label="Align">
+              <Row label={t("settings.align")}>
                 <Seg
-                  label="Text alignment"
+                  label={t("settings.textAlign")}
                   value={settings.align}
                   onChange={(v) => set({ align: v })}
                   options={[
-                    { key: "left", label: <><AlignLeft size={13} /> Left</> },
-                    { key: "justify", label: <><AlignJustify size={13} /> Justified</> },
+                    { key: "left", label: <><AlignLeft size={13} /> {t("opt.left")}</> },
+                    { key: "justify", label: <><AlignJustify size={13} /> {t("opt.justified")}</> },
                   ]}
                 />
               </Row>
-              <Row label="Paragraphs">
+              <Row label={t("settings.paragraphs")}>
                 <Seg
-                  label="Paragraph style"
+                  label={t("settings.paragraphStyle")}
                   value={settings.paras}
                   onChange={(v) => set({ paras: v })}
                   options={[
-                    { key: "spaced", label: "Spaced" },
-                    { key: "indented", label: "Indented" },
+                    { key: "spaced", label: t("opt.spaced") },
+                    { key: "indented", label: t("opt.indented") },
                   ]}
                 />
               </Row>
@@ -376,7 +412,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
                   }
                   className="inline-flex items-center gap-1.5 text-[12.5px] text-ink-3 transition-colors hover:text-ink"
                 >
-                  <RotateCcw size={12} /> Reset text settings
+                  <RotateCcw size={12} /> {t("settings.resetText")}
                 </button>
               )}
             </div>
@@ -385,19 +421,19 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
           {!compact && tab === "answers" && (
             <div className="space-y-4">
               <div>
-                <p className="mb-2 text-[12.5px] text-ink-3">Answer length</p>
+                <p className="mb-2 text-[12.5px] text-ink-3">{t("settings.answerLength")}</p>
                 <Seg
-                  label="Answer length"
+                  label={t("settings.answerLength")}
                   value={settings.length}
                   onChange={(v) => set({ length: v })}
                   options={[
-                    { key: "short", label: "Short" },
-                    { key: "normal", label: "Balanced" },
-                    { key: "long", label: "Detailed" },
+                    { key: "short", label: t("opt.short") },
+                    { key: "normal", label: t("opt.balanced") },
+                    { key: "long", label: t("opt.detailed") },
                   ]}
                 />
                 <p className="mt-2 text-[12px] leading-snug text-ink-4">
-                  {settings.length === "short" ? "A sentence or three." : settings.length === "long" ? "Room for nuance, up to a short paragraph or two." : "About a paragraph."}
+                  {t(settings.length === "short" ? "length.shortBlurb" : settings.length === "long" ? "length.longBlurb" : "length.normalBlurb")}
                 </p>
               </div>
             </div>

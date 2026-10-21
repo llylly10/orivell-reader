@@ -7,6 +7,8 @@ import { Tooltips } from "@/components/ui/Tooltips";
 import { ClerkProvider } from "@clerk/nextjs";
 import { SyncAgent } from "@/components/account/SyncAgent";
 import { OG_IMAGE, SITE_URL } from "@/lib/brand";
+import { LangProvider } from "@/lib/lang-context";
+import { DevPanel } from "@/components/ui/DevPanel";
 
 const serif = Newsreader({
   subsets: ["latin", "latin-ext"],
@@ -83,8 +85,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <ClerkProvider appearance={CLERK_APPEARANCE}>
-          {children}
-          <SyncAgent />
+          <LangProvider>
+            {children}
+            <SyncAgent />
+            <DevPanel />
+          </LangProvider>
         </ClerkProvider>
         <Tooltips />
         {/* Plausible: cookieless page views, from the production site only, so previews and local runs never count. */}

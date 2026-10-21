@@ -13,6 +13,7 @@ import { indexArticle } from "@/lib/doc";
 import { fetchText } from "@/lib/sync";
 import { loadDoc, useGlosses, useHighlights, useStore, type Anchor } from "@/lib/store";
 import { applySettings } from "@/lib/settings";
+import { useT } from "@/lib/lang-context";
 import { GlossWordmark } from "@/components/brand/Gloss";
 import { Block, type Mark } from "./Block";
 import { Brief } from "./Brief";
@@ -30,6 +31,7 @@ import { Rail } from "./Rail";
 import { TopBar } from "./TopBar";
 
 export function Reader({ id, initial }: { id: string; initial: Article | null }) {
+  const t = useT();
   const [article, setArticle] = useState<Article | null>(initial);
   const [missing, setMissing] = useState(false);
   const hydrate = useStore((s) => s.hydrate);
@@ -79,10 +81,10 @@ export function Reader({ id, initial }: { id: string; initial: Article | null })
       <main className="grid min-h-dvh place-items-center px-6 text-center">
         <div>
           <GlossWordmark />
-          <p className="mt-6 font-serif text-[26px] text-ink">This text is not on this device.</p>
-          <p className="mt-2 text-[14px] text-ink-3">Imported texts live in the browser that imported them, or in your account when you are signed in.</p>
+          <p className="mt-6 font-serif text-[26px] text-ink">{t("err.notFound")}</p>
+          <p className="mt-2 text-[14px] text-ink-3">{t("land.sub")}</p>
           <Link href="/" className="mt-6 inline-flex h-10 items-center rounded-full bg-ink px-5 text-[14px] font-medium text-bg">
-            Back to the library
+            {t("topbar.library")}
           </Link>
         </div>
       </main>
@@ -107,6 +109,7 @@ const GUTTER_WIDE = 64;
 const GUTTER_MID = 52;
 
 function ReaderInner({ article }: { article: Article }) {
+  const t = useT();
   const ix = useMemo(() => indexArticle(article), [article]);
   const articleId = article.id;
   const [articleEl, setArticleEl] = useState<HTMLDivElement | null>(null);
@@ -319,8 +322,8 @@ function ReaderInner({ article }: { article: Article }) {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), toast.kind === "hint" ? 9000 : 6000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setToast(null), toast.kind === "hint" ? 9000 : 6000);
+    return () => clearTimeout(timer);
   }, [toast]);
 
   const dismissHint = () => {
@@ -335,15 +338,15 @@ function ReaderInner({ article }: { article: Article }) {
   const onTextClick = (e: React.MouseEvent) => {
     const sel = window.getSelection();
     if (sel && !sel.isCollapsed) return;
-    const t = e.target as HTMLElement;
-    const g = t.closest<HTMLElement>("[data-g]");
+    const el = e.target as HTMLElement;
+    const g = el.closest<HTMLElement>("[data-g]");
     if (g?.dataset.g) {
       const ids = g.dataset.g.split(" ");
       const next = ids.includes(activeGloss ?? "") && ids.length > 1 ? ids[(ids.indexOf(activeGloss!) + 1) % ids.length] : ids[ids.length - 1];
       setUI({ activeGloss: next, activeHighlight: null });
       return;
     }
-    const h = t.closest<HTMLElement>("[data-h]");
+    const h = el.closest<HTMLElement>("[data-h]");
     if (h?.dataset.h) {
       const id = h.dataset.h.split(" ").pop()!;
       const hl = highlights.find((x) => x.id === id);
@@ -360,8 +363,8 @@ function ReaderInner({ article }: { article: Article }) {
   // Clicking empty paper puts the active gloss down.
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
-      const t = e.target as HTMLElement;
-      if (t.closest(".gloss, [data-g], .lens, .pop, header, aside, [role=dialog], .cite, .sheet")) return;
+      const el = e.target as HTMLElement;
+      if (el.closest(".gloss, [data-g], .lens, .pop, header, aside, [role=dialog], .cite, .sheet")) return;
       if (useStore.getState().activeGloss) setUI({ activeGloss: null });
     };
     document.addEventListener("pointerdown", onDown);
@@ -401,8 +404,8 @@ function ReaderInner({ article }: { article: Article }) {
         }
         return;
       }
-      const t = e.target as HTMLElement;
-      if (t.closest("input, textarea, select, [contenteditable]")) return;
+      const el = e.target as HTMLElement;
+      if (el.closest("input, textarea, select, [contenteditable]")) return;
       const sel = window.getSelection();
       const hasSel = sel && !sel.isCollapsed;
       const st = useStore.getState();
@@ -472,7 +475,7 @@ function ReaderInner({ article }: { article: Article }) {
 
   const paraCount = ix.byNumber.size;
   // A short line above the title: where this came from.
-  const kicker = article.source ? article.source.split(/,|\(/)[0].trim() : article.origin === "paste" ? "Pasted text" : undefined;
+  const kicker = article.source ? article.source.split(/,|\(/)[0].trim() : article.origin === "paste" ? t("byline.pasted") : undefined;
 
   return (
     <ReaderContext.Provider value={api}>
@@ -512,7 +515,11 @@ function ReaderInner({ article }: { article: Article }) {
                       {article.published && <span className="text-ink-3">{`  \u00b7  ${article.published}`}</span>}
                     </p>
                     <p className="mt-1 text-[13px] leading-snug text-ink-3">
-                      {article.bookmark ? "Saved link · too little text to read here" : `${readingMinutes(ix.words)} min read · ${paraCount} paragraphs`}
+                      {article.bookmark ? t("read.savedLinkTooShort") : (
+                        <>
+                          {readingMinutes(ix.words)} {t("sheet.reading")} <span className="text-ink-4">{"\u00b7"}</span> {paraCount} {t("settings.paragraphs")}
+                        </>
+                      )}
                     </p>
                   </div>
                   {article.sourceUrl && (
@@ -522,7 +529,7 @@ function ReaderInner({ article }: { article: Article }) {
                       rel="noopener noreferrer"
                       className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-rule px-3.5 text-[13px] font-medium text-ink-2 transition-[border-color,color,transform] hover:border-rule-strong hover:text-ink active:scale-[0.97]"
                     >
-                      Original <ArrowUpRight size={14} strokeWidth={2} />
+                      {t("read.original")} <ArrowUpRight size={14} strokeWidth={2} />
                     </a>
                   )}
                 </div>
@@ -579,10 +586,10 @@ function ReaderInner({ article }: { article: Article }) {
                 </p>
                 <div className="mt-6 flex flex-wrap gap-2">
                   <button type="button" onClick={() => setUI({ notebookOpen: true })} className="h-9 rounded-full border border-rule px-4 text-[13px] font-medium text-ink-2 hover:border-rule-strong hover:text-ink">
-                    Open your notebook
+                    {t("nb.title")}
                   </button>
                   <Link href="/" className="inline-flex h-9 items-center rounded-full border border-rule px-4 text-[13px] font-medium text-ink-2 hover:border-rule-strong hover:text-ink">
-                    Back to the library
+                    {t("topbar.library")}
                   </Link>
                 </div>
               </footer>
@@ -600,7 +607,7 @@ function ReaderInner({ article }: { article: Article }) {
             role="status"
             className="focus-hint pointer-events-none fixed bottom-[calc(env(safe-area-inset-bottom)+32px)] left-1/2 z-40 whitespace-nowrap rounded-full bg-lens px-4 py-2 text-[13px] text-lens-fg shadow-pop"
           >
-            {window.matchMedia("(pointer: coarse)").matches ? "Focus mode. Scroll up for the menu." : "Focus mode. Press F or Esc to leave."}
+            {t("keys.focus")} · {window.matchMedia("(pointer: coarse)").matches ? t("read.startOver") : t("keys.close")}
           </p>
         )}
 
@@ -614,7 +621,7 @@ function ReaderInner({ article }: { article: Article }) {
 
         {toast?.kind === "resume" && (
           <Toast onClose={() => setToast(null)}>
-            <span>Picked up where you left off, at ¶{toast.n}.</span>
+            <span>{t("read.pickUp", { n: toast.n })}</span>
             <button
               type="button"
               onClick={() => {
@@ -623,17 +630,17 @@ function ReaderInner({ article }: { article: Article }) {
               }}
               className="font-medium underline decoration-lens-mute underline-offset-4"
             >
-              Start over
+              {t("read.startOver")}
             </button>
           </Toast>
         )}
         {toast?.kind === "hint" && (
           <Toast onClose={dismissHint}>
             {window.matchMedia("(pointer: coarse)").matches ? (
-              <span>Select any passage to ask about it, explain it or highlight it.</span>
+              <span>{t("read.marginEmptyHint")}</span>
             ) : (
               <span>
-                Select any passage, then <span className="font-medium">just start typing</span> to ask about it.
+                {t("read.hintKeys")}
               </span>
             )}
           </Toast>
@@ -648,6 +655,7 @@ const EMPTY: Mark[] = [];
 /** Under 1080px there is no margin, so the active gloss rises as a sheet. */
 function GlossSheet() {
   const { ix } = useReader();
+  const t = useT();
   const glosses = useGlosses(ix.article.id);
   const active = useStore((s) => s.activeGloss);
   const notebookOpen = useStore((s) => s.notebookOpen);
@@ -661,7 +669,7 @@ function GlossSheet() {
     >
       <div className="sticky top-0 z-10 flex items-center justify-center bg-raised/95 pb-1 pt-2.5 backdrop-blur">
         <span className="h-1 w-9 rounded-full bg-rule-strong" aria-hidden />
-        <button type="button" aria-label="Close" onClick={() => setUI({ activeGloss: null })} className="absolute right-3 top-2 grid size-8 place-items-center rounded-lg text-ink-3 hover:bg-sunk">
+        <button type="button" aria-label={t("common.close")} onClick={() => setUI({ activeGloss: null })} className="absolute right-3 top-2 grid size-8 place-items-center rounded-lg text-ink-3 hover:bg-sunk">
           <X size={16} />
         </button>
       </div>

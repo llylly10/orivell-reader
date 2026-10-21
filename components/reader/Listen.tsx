@@ -10,7 +10,12 @@ import type { DocIndex } from "@/lib/doc";
 import { useStore } from "@/lib/store";
 import { TTS_MAX_CHARS } from "@/lib/voice";
 import { barBtn } from "@/components/ui/Popover";
+import { useT } from "@/lib/lang-context";
+import { translate, resolveLang } from "@/lib/i18n";
 import { useReader } from "./context";
+
+/** Engine messages are set outside React, so they translate themselves at the moment they happen. */
+const say = (key: string) => translate(key, resolveLang());
 
 /**
  * Read aloud. The text is spoken a passage at a time from where you are, each
@@ -144,7 +149,7 @@ export function startListening(ix: DocIndex, fromBlock: string | null) {
   stopListening();
   // Reading aloud always uses the reader's own key: say so before anything is fetched.
   if (!readApiKey()) {
-    useListen.setState({ status: "error", needKey: true, error: "Reading aloud uses your own Together key." });
+    useListen.setState({ status: "error", needKey: true, error: say("listen.needKey") });
     return;
   }
   const blocks = ix.article.blocks;
@@ -225,6 +230,7 @@ function cycleRate() {
 /** In the top bar, only when Listen is on in settings. Starts from the paragraph you are on. */
 export function ListenButton({ from }: { from: () => string | null }) {
   const { ix } = useReader();
+  const t = useT();
   const on = useStore((s) => s.settings.listen);
   const status = useListen((s) => s.status);
   if (!on) return null;
@@ -233,9 +239,9 @@ export function ListenButton({ from }: { from: () => string | null }) {
     <button
       type="button"
       className={`${barBtn} ${active ? "bg-sunk text-ink" : ""}`}
-      aria-label={active ? "Stop reading aloud" : "Read aloud from here"}
+      aria-label={active ? t("listen.stop") : t("listen.play")}
       aria-pressed={active}
-      data-tip={active ? "Stop reading aloud" : "Read aloud from here"}
+      data-tip={active ? t("listen.stop") : t("listen.play")}
       onClick={() => {
         if (active) return stopListening();
         // The paragraph cursor when it is on screen, otherwise the first paragraph in view.
@@ -252,6 +258,7 @@ export function ListenButton({ from }: { from: () => string | null }) {
 /** While the voice is reading: a small bar just above the question box, and the cursor on the paragraph being read. */
 export function ListenBar() {
   const { ix, jumpToBlock } = useReader();
+  const t = useT();
   const { status, block, rate, error, needKey } = useListen();
   const on = useStore((s) => s.settings.listen);
   const setUI = useStore((s) => s.setUI);
@@ -283,7 +290,7 @@ export function ListenBar() {
   return (
     <div
       role="region"
-      aria-label="Reading aloud"
+      aria-label={t("listen.play")}
       className="fixed bottom-[calc(env(safe-area-inset-bottom)+80px)] left-1/2 sm:bottom-[calc(env(safe-area-inset-bottom)+90px)] z-[46] flex -translate-x-1/2 items-center gap-1 rounded-full bg-lens p-1 text-lens-fg shadow-pop ring-1 ring-black/5"
       style={{ animation: "rise 0.35s var(--ease-out) both" }}
     >
@@ -291,7 +298,7 @@ export function ListenBar() {
         <button
           type="button"
           onClick={toggleListening}
-          aria-label={status === "playing" ? "Pause" : status === "error" ? "Try again" : "Play"}
+          aria-label={status === "playing" ? t("card.stop") : status === "error" ? t("common.retry") : t("listen.play")}
           className="grid size-9 place-items-center rounded-full bg-[var(--rubric)] text-white transition-transform active:scale-90"
         >
           {status === "loading" ? (
@@ -317,7 +324,7 @@ export function ListenBar() {
               }}
               className="h-9 shrink-0 rounded-full px-3 text-[13px] font-medium underline decoration-lens-mute underline-offset-4 transition-colors hover:bg-lens-hover"
             >
-              Add key
+              {t("topbar.addKey")}
             </button>
           )}
         </>
@@ -326,22 +333,22 @@ export function ListenBar() {
           type="button"
           onClick={() => block && jumpToBlock(block, { flash: false })}
           className="h-9 rounded-full px-2.5 text-[13px] tabular-nums text-lens-fg/85 transition-colors hover:bg-lens-hover hover:text-lens-fg"
-          aria-label={n ? `Reading paragraph ${n}. Show it.` : "Show where it is reading"}
+          aria-label={t("read.map")}
         >
-          {n ? `Reading ¶${n}` : "Reading"}
+          {n ? `¶${n}` : t("sheet.reading")}
         </button>
       )}
       {!needKey && (
         <button
           type="button"
           onClick={cycleRate}
-          aria-label={`Speed ${rate} times. Change speed.`}
+          aria-label={t("listen.speed")}
           className="h-9 min-w-[48px] rounded-full px-2.5 text-[13px] font-medium tabular-nums transition-colors hover:bg-lens-hover"
         >
           {`${rate}×`}
         </button>
       )}
-      <button type="button" onClick={stopListening} aria-label="Stop reading aloud" className="grid size-9 place-items-center rounded-full text-lens-fg/80 transition-colors hover:bg-lens-hover hover:text-lens-fg">
+      <button type="button" onClick={stopListening} aria-label={t("listen.stop")} className="grid size-9 place-items-center rounded-full text-lens-fg/80 transition-colors hover:bg-lens-hover hover:text-lens-fg">
         <Square size={13} fill="currentColor" strokeWidth={0} />
       </button>
     </div>

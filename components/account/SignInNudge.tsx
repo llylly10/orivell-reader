@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { SignInButton, useAuth } from "@clerk/nextjs";
 import { Toast } from "@/components/reader/Overlays";
+import { useT } from "@/lib/lang-context";
 import { useStore } from "@/lib/store";
 
 const KEY = "gloss:nudge";
@@ -22,6 +23,7 @@ function marks(st: ReturnType<typeof useStore.getState>) {
  * more after a handful, a few days later. Never more than twice.
  */
 export function SignInNudge() {
+  const t = useT();
   const { isLoaded, isSignedIn } = useAuth();
   const hydrated = useStore((s) => s.hydrated);
   const count = useStore(marks);
@@ -49,17 +51,17 @@ export function SignInNudge() {
 
   useEffect(() => {
     if (!open) return;
-    const t = setTimeout(() => setOpen(false), 12_000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setOpen(false), 12_000);
+    return () => clearTimeout(timer);
   }, [open]);
 
   if (!open || isSignedIn) return null;
   return (
     <Toast onClose={() => setOpen(false)}>
-      <span>Kept in this browser. Sign in to have it on every device.</span>
+      <span>{t("nb.localOnly")}</span>
       <SignInButton mode="modal">
         <button type="button" onClick={() => setOpen(false)} className="font-medium underline decoration-lens-mute underline-offset-4">
-          Sign in
+          {t("topbar.signIn")}
         </button>
       </SignInButton>
     </Toast>

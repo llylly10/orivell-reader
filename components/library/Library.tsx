@@ -22,6 +22,8 @@ import { BookOpen, type Origin } from "./BookOpen";
 import { Shelf } from "./Shelf";
 import { Starter } from "./Starter";
 import { TopicGrid, TopicPage } from "./Topics";
+import { useT, useLang } from "@/lib/lang-context";
+import { topicName } from "@/lib/i18n";
 
 type View = "shelf" | "topics";
 
@@ -39,6 +41,8 @@ const SAMPLES_UNTIL = 6;
 export function Library() {
   const router = useRouter();
   const { user, isSignedIn } = useUser();
+  const t = useT();
+  const { lang } = useLang();
   const hydrate = useStore((s) => s.hydrate);
   const hydrated = useStore((s) => s.hydrated);
   const library = useStore((s) => s.library);
@@ -144,7 +148,7 @@ export function Library() {
       return {
         id: x.id,
         title: tidyTitle(x.title),
-        author: bylineOf(x),
+        author: bylineOf(x, t),
         year: x.year,
         url: x.sourceUrl,
         topic,
@@ -191,10 +195,10 @@ export function Library() {
   const match = useCallback(
     (b: Book) => {
       const words = q.toLowerCase().trim().split(/\s+/).filter(Boolean);
-      const t = tag ? TAGS.find((x) => x.key === tag)! : null;
-      return (!t || t.test(b)) && words.every((w) => `${b.title} ${b.author} ${b.topicName ?? shelfDef(b.topic).name} ${b.tags.join(" ")} ${b.year ?? ""} ${b.bookmark ? "saved link bookmark" : ""}`.toLowerCase().includes(w));
+      const tg = tag ? TAGS.find((x) => x.key === tag)! : null;
+      return (!tg || tg.test(b)) && words.every((w) => `${b.title} ${b.author} ${b.topicName ?? topicName(b.topic, shelfDef(b.topic, prefs.customShelves).name, lang)} ${b.tags.join(" ")} ${b.year ?? ""} ${b.bookmark ? "saved link bookmark" : ""}`.toLowerCase().includes(w));
     },
-    [q, tag]
+    [q, tag, lang, prefs.customShelves]
   );
   const shown = useMemo(() => new Set(sorted.filter((b) => (!only || b.topic === only) && match(b)).map((b) => b.id)), [sorted, only, match]);
 
@@ -260,9 +264,9 @@ export function Library() {
   const searchBox = (
     <label className="lib-search">
       <Search size={15} className="shrink-0 text-ink-4" aria-hidden />
-      <input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder={T ? `Search ${T.name}` : "Search the library"} aria-label="Search the library" />
+      <input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder={T ? t("lib.searchTopic", { topic: topicName(T.key, T.name, lang) }) : t("lib.searchPlaceholder")} aria-label={t("lib.searchPlaceholder")} />
       {q ? (
-        <button type="button" aria-label="Clear search" onClick={() => setQ("")} className="grid size-5 place-items-center rounded-full text-ink-3 hover:bg-sunk">
+        <button type="button" aria-label={t("lib.clearSearch")} onClick={() => setQ("")} className="grid size-5 place-items-center rounded-full text-ink-3 hover:bg-sunk">
           <X size={13} />
         </button>
       ) : (
@@ -272,12 +276,12 @@ export function Library() {
   );
 
   const tagChips = (pool: Book[]) =>
-    TAGS.map((t) => {
-      const n = pool.filter(t.test).length;
+    TAGS.map((tg) => {
+      const n = pool.filter(tg.test).length;
       if (!n) return null;
       return (
-        <Chip key={t.key} on={tag === t.key} onClick={() => setTag(tag === t.key ? null : t.key)}>
-          <Glyph k={t.key} size={18} /> {t.label} <span className="lib-n">{n}</span>
+        <Chip key={tg.key} on={tag === tg.key} onClick={() => setTag(tag === tg.key ? null : tg.key)}>
+          <Glyph k={tg.key} size={18} /> {t(`tag.${tg.key}`)} <span className="lib-n">{n}</span>
         </Chip>
       );
     });
@@ -293,30 +297,30 @@ export function Library() {
           <section className="lib-hero">
             <div className="lib-hero-row">
               <div className="min-w-0">
-                <h1 className="lib-title">{first ? `${first}'s library` : "Your library"}</h1>
+                <h1 className="lib-title">{first ? t("lib.possessive", { name: first }) : t("lib.yourLibrary")}</h1>
                 {/* Its height is kept while the shelf is read, so the tools below never jump. */}
                 <p className="lib-stats">
                   {hydrated && (
                     <>
                       <span>
-                        <b>{stats.count}</b> {stats.count === 1 ? "text" : "texts"}
+                        <b>{stats.count}</b> {stats.count === 1 ? t("lib.text", { n: stats.count }) : t("lib.texts", { n: stats.count })}
                       </span>
                       {stats.topics > 0 && (
                         <span>
-                          <b>{stats.topics}</b> {stats.topics === 1 ? "topic" : "topics"}
+                          <b>{stats.topics}</b> {stats.topics === 1 ? t("lib.topic", { n: stats.topics }) : t("lib.topics", { n: stats.topics })}
                         </span>
                       )}
                       <span>
-                        <b>{stats.hours}</b> {stats.hours === 1 ? "hour" : "hours"} of reading
+                        <b>{stats.hours}</b> {t("lib.hours", { n: stats.hours })}
                       </span>
                       {stats.reading > 0 && (
                         <span>
-                          <b>{stats.reading}</b> in progress
+                          {t("lib.inProgress", { n: stats.reading })}
                         </span>
                       )}
                       {stats.read > 0 && (
                         <span>
-                          <b>{stats.read}</b> read
+                          {t("lib.read", { n: stats.read })}
                         </span>
                       )}
                     </>
@@ -328,7 +332,7 @@ export function Library() {
             {fromAgent.length > 0 && (
               <button type="button" className="lib-news" onClick={() => (setTag("agent"), setOnly(null), go({ view: "shelf" }))}>
                 <Glyph k="agent" size={22} />
-                {fromAgent.length} new from your agent since you last looked
+                {t("lib.agentNews", { n: fromAgent.length })}
               </button>
             )}
           </section>
@@ -337,7 +341,7 @@ export function Library() {
         {T ? (
           <div className="lib-tools is-topic">
             <button type="button" onClick={() => go({ view: "topics" })} className="lib-back">
-              <ChevronLeft size={16} /> All topics
+              <ChevronLeft size={16} /> {t("lib.allTopics")}
             </button>
             <AddButton compact onClick={() => setAdding("agent")} />
           </div>
@@ -346,11 +350,11 @@ export function Library() {
             <ViewSwitch view={view} onChange={(v) => go({ view: v })} />
             {searchBox}
             {view === "shelf" && (
-              <div className="lib-sort" role="radiogroup" aria-label="Arrange by">
-                <span className="px-2 text-[12.5px] text-ink-4 max-md:hidden">Arrange by</span>
+              <div className="lib-sort" role="radiogroup" aria-label={t("lib.arrangeBy")}>
+                <span className="px-2 text-[12.5px] text-ink-4 max-md:hidden">{t("lib.arrangeBy")}</span>
                 {SORTS.map((s) => (
                   <button key={s.key} type="button" role="radio" aria-checked={sort === s.key} onClick={() => setSort(s.key)}>
-                    {s.label}
+                    {t(`sort.${s.key}`)}
                   </button>
                 ))}
               </div>
@@ -360,19 +364,19 @@ export function Library() {
 
         {view === "shelf" && !T && (
           <>
-            <ChipRow label="Filter">
+            <ChipRow label={t("lib.filter")}>
               <Chip on={!only && !tag} onClick={() => (setOnly(null), setTag(null))}>
-                All <span className="lib-n">{books.length}</span>
+                {t("lib.all")} <span className="lib-n">{books.length}</span>
               </Chip>
-              {topics.map(({ topic: t, books: bs }) => (
-                <Chip key={t.key} on={only === t.key} color={t.shades[0]} onClick={() => setOnly(only === t.key ? null : t.key)}>
-                  <Glyph k={t.key} size={18} label={t.name} /> {t.name} <span className="lib-n">{bs.length}</span>
+              {topics.map(({ topic: t2, books: bs }) => (
+                <Chip key={t2.key} on={only === t2.key} color={t2.shades[0]} onClick={() => setOnly(only === t2.key ? null : t2.key)}>
+                  <Glyph k={t2.key} size={18} label={t2.name} /> {topicName(t2.key, t2.name, lang)} <span className="lib-n">{bs.length}</span>
                 </Chip>
               ))}
               <Chip on={false} onClick={() => setNewShelfName("")}>
-                <Plus size={14} /> New shelf
+                <Plus size={14} /> {t("book.newShelf")}
               </Chip>
-              {TAGS.some((t) => books.some(t.test)) && <span aria-hidden className="mx-1.5 h-4 w-px shrink-0 self-center bg-rule-strong" />}
+              {TAGS.some((tg) => books.some(tg.test)) && <span aria-hidden className="mx-1.5 h-4 w-px shrink-0 self-center bg-rule-strong" />}
               {tagChips(books)}
             </ChipRow>
             {newShelfName !== null && (
@@ -385,12 +389,12 @@ export function Library() {
                   if (made) setOnly(made.key);
                 }}
               >
-                <input autoFocus value={newShelfName} onChange={(e) => setNewShelfName(e.target.value)} placeholder="Name your shelf, e.g. Research to revisit" aria-label="New shelf name" className="shelf-new-input" maxLength={40} />
+                <input autoFocus value={newShelfName} onChange={(e) => setNewShelfName(e.target.value)} placeholder={t("book.nameYourShelf")} aria-label={t("book.newShelfName")} className="shelf-new-input" maxLength={40} />
                 <button type="submit" className="add-btn" disabled={!newShelfName.trim()}>
-                  Create shelf
+                  {t("book.createShelf")}
                 </button>
                 <button type="button" className="lib-chip" onClick={() => setNewShelfName(null)}>
-                  Cancel
+                  {t("common.cancel")}
                 </button>
               </form>
             )}
@@ -468,13 +472,17 @@ export function Library() {
                 )}
                 {hydrated && shown.size === 0 && books.length > 0 && (
                   <p className="py-6 text-center text-[14px] text-ink-3">
-                    {only && shelfDef(only, prefs.customShelves).custom && !q ? <>This shelf is empty. Open a book and move it here, or pick &ldquo;+ New shelf…&rdquo; while a book is in your hands.</> : <>Nothing on the shelves matches{q ? <> &ldquo;{q}&rdquo;</> : ""}.</>}
+                    {only && shelfDef(only, prefs.customShelves).custom && !q ? (
+                      <>{t("lib.shelfEmpty")}</>
+                    ) : (
+                      <>{t("lib.nothingMatches", { q: q ? ` "${q}"` : "" })}</>
+                    )}
                   </p>
                 )}
                 {hydrated && own.length < SAMPLES_UNTIL ? (
                   <Starter count={own.length} signedIn={Boolean(isSignedIn)} onAdd={setAdding} />
                 ) : (
-                  hydrated && <p className="lib-hint">Click a spine to take it down. Arrow keys walk the shelf.</p>
+                  hydrated && <p className="lib-hint">{t("lib.clickSpine")}</p>
                 )}
               </>
             ) : (
@@ -563,11 +571,11 @@ export function Library() {
 }
 
 /** Who wrote it, or failing that where it is from: a site's name without its domain ending, a file without its extension. */
-function bylineOf(x: { author?: string; source?: string; origin?: string }): string {
+function bylineOf(x: { author?: string; source?: string; origin?: string }, t: (key: string) => string): string {
   if (x.author) return x.author;
   const src = x.source?.split(",")[0].trim();
   if (src) return src.replace(/^www\./, "").replace(/\.(pdf|txt|md|markdown)$/i, "").replace(/\.(com|org|net|io|ai|dev|co|edu|blog|app)(\.[a-z]{2})?$/i, "");
-  return x.origin === "paste" ? "Pasted text" : x.origin === "file" ? "A file" : "Saved";
+  return x.origin === "paste" ? t("byline.pasted") : x.origin === "file" ? t("byline.file") : t("byline.saved");
 }
 
 /**
@@ -575,6 +583,7 @@ function bylineOf(x: { author?: string; source?: string; origin?: string }): str
  * at an edge with more beyond it, and offers an arrow there to page along.
  */
 function ChipRow({ label, children }: { label: string; children: React.ReactNode }) {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const [edges, setEdges] = useState({ l: false, r: false });
   useEffect(() => {
@@ -604,10 +613,10 @@ function ChipRow({ label, children }: { label: string; children: React.ReactNode
       <div ref={ref} className="lib-chips no-scrollbar" role="group" aria-label={label}>
         {children}
       </div>
-      <button type="button" className="lib-chip-page is-l" aria-label="Scroll filters left" tabIndex={-1} onClick={() => page(-1)}>
+      <button type="button" className="lib-chip-page is-l" aria-label={t("lib.scrollLeft")} tabIndex={-1} onClick={() => page(-1)}>
         <ChevronLeft size={15} />
       </button>
-      <button type="button" className="lib-chip-page is-r" aria-label="Scroll filters right" tabIndex={-1} onClick={() => page(1)}>
+      <button type="button" className="lib-chip-page is-r" aria-label={t("lib.scrollRight")} tabIndex={-1} onClick={() => page(1)}>
         <ChevronRight size={15} />
       </button>
     </div>
@@ -623,14 +632,15 @@ function Chip({ on, color, onClick, children }: { on: boolean; color?: string; o
 }
 
 function ViewSwitch({ view, onChange }: { view: View; onChange: (v: View) => void }) {
+  const t = useT();
   return (
-    <div className="lib-switch" role="radiogroup" aria-label="View" data-view={view}>
+    <div className="lib-switch" role="radiogroup" aria-label={t("lib.filter")} data-view={view}>
       <span className="lib-switch-pill" aria-hidden />
       <button type="button" role="radio" aria-checked={view === "shelf"} onClick={() => onChange("shelf")}>
-        <LibraryIcon size={15} /> Shelf
+        <LibraryIcon size={15} /> {t("lib.shelf")}
       </button>
       <button type="button" role="radio" aria-checked={view === "topics"} onClick={() => onChange("topics")}>
-        <LayoutGrid size={15} /> Topics
+        <LayoutGrid size={15} /> {t("lib.topicsView")}
       </button>
     </div>
   );

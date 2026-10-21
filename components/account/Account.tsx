@@ -2,15 +2,17 @@
 
 import { Show, SignInButton, UserButton } from "@clerk/nextjs";
 import { barBtn } from "@/components/ui/Popover";
+import { useT } from "@/lib/lang-context";
 
 /** Signed out: a quiet "Sign in". Signed in: the avatar, with Clerk's account menu. */
 export function Account() {
+  const t = useT();
   return (
     <>
       <Show when="signed-out">
         <SignInButton mode="modal">
-          <button type="button" className={`${barBtn} !px-3 whitespace-nowrap`} data-tip="Keep your highlights and notes on every device">
-            Sign in
+          <button type="button" className={`${barBtn} !px-3 whitespace-nowrap`} data-tip={t("topbar.newFrom")}>
+            {t("topbar.signIn")}
           </button>
         </SignInButton>
       </Show>

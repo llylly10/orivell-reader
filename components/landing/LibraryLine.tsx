@@ -8,6 +8,7 @@ import { useLibraryPrefs } from "@/lib/library-prefs";
 import { SAMPLE_SHELF } from "@/lib/classics";
 import { SAMPLES } from "@/lib/samples";
 import { useStore } from "@/lib/store";
+import { useT } from "@/lib/lang-context";
 
 export type Saved = { id: string; title: string; bookmark?: boolean };
 
@@ -29,6 +30,7 @@ function Ring({ pct }: { pct: number }) {
  * bundled samples. Its room is always kept, so the headline above never moves.
  */
 export function LibraryLine({ saved }: { saved: Saved | null }) {
+  const t = useT();
   const hydrated = useStore((s) => s.hydrated);
   const library = useStore((s) => s.library);
   const progress = useStore((s) => s.progress);
@@ -51,11 +53,21 @@ export function LibraryLine({ saved }: { saved: Saved | null }) {
         <span className="lib-line-note">
           <Check size={14} className="shrink-0 text-good" />
           <span className="min-w-0 truncate">
-            {saved.bookmark ? <>Saved as a link: <span className="text-ink">{tidyTitle(saved.title)}</span> — too little text to read here, kept to look at later</> : <>Saved <span className="text-ink">{tidyTitle(saved.title)}</span> to your library</>}
+            {saved.bookmark ? (
+              <>
+                {t("byline.savedAsLink")}{" "}
+                <span className="text-ink">{tidyTitle(saved.title)}</span>
+                {t("byline.tooLittleText")}
+              </>
+            ) : (
+              <>
+                {t("byline.saved")} <span className="text-ink">{tidyTitle(saved.title)}</span>
+              </>
+            )}
           </span>
         </span>
         <Link href="/library" className="lib-line-go">
-          Open <ArrowRight size={13} />
+          {t("lib.yourLibrary")} <ArrowRight size={13} />
         </Link>
       </p>
     );
@@ -66,7 +78,7 @@ export function LibraryLine({ saved }: { saved: Saved | null }) {
     if (!samples.length) return <div className="lib-line" aria-hidden />;
     return (
       <p className="lib-line">
-        <span>No link handy? Try</span>
+        <span>{t("lib.addArticlesHint")}</span>
         {samples.map((a) => (
           <Link key={a.id} href={`/read/${a.id}`} className="lib-sample" data-tip={a.title} data-tip-hint={`${a.author}, ${a.published}`}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -84,18 +96,18 @@ export function LibraryLine({ saved }: { saved: Saved | null }) {
         <Link href={`/read/${reading.id}`} className="lib-line-note group transition-colors hover:text-ink">
           <Ring pct={reading.pct} />
           <span className="min-w-0 truncate">
-            Continue <span className="text-ink">{reading.title}</span>
+            {t("book.continueReading")} <span className="text-ink">{reading.title}</span>
           </span>
           <span className="shrink-0 tabular-nums text-ink-4">{Math.round(reading.pct * 100)}%</span>
         </Link>
       ) : (
         <span className="lib-line-note">
-          {library.length} {library.length === 1 ? "text" : "texts"} on your shelves
+          {library.length === 1 ? t("lib.text", { n: library.length }) : t("lib.texts", { n: library.length })}
         </span>
       )}
       {library.length > 0 && (
         <Link href="/library" className="lib-line-go">
-          Your library <ArrowRight size={13} />
+          {t("lib.yourLibrary")} <ArrowRight size={13} />
         </Link>
       )}
     </p>

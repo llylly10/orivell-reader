@@ -8,6 +8,7 @@ import { wordCount, type Article } from "@/lib/article";
 import { importFromFile, importFromText, importFromUrl, keep, looksLikeUrl } from "@/lib/import";
 import { hideSample, useLibraryPrefs } from "@/lib/library-prefs";
 import { normalizeUrl } from "@/lib/links";
+import { useT } from "@/lib/lang-context";
 import { SAMPLES } from "@/lib/samples";
 import { applySettings } from "@/lib/settings";
 import { useStore } from "@/lib/store";
@@ -20,6 +21,7 @@ import { ShelfSheet, type ShelfItem } from "./ShelfSheet";
 
 /** One screen: a headline that shows what it does, a place to paste, and your shelf. */
 export function Landing({ signedIn: signedInAtLoad = false }: { signedIn?: boolean }) {
+  const t = useT();
   const router = useRouter();
   // Known on the server at load, so a signed-in reader never sees the demo flash; then live, for a sign-in from this page.
   const { isLoaded, isSignedIn } = useAuth();
@@ -81,9 +83,9 @@ export function Landing({ signedIn: signedInAtLoad = false }: { signedIn?: boole
       try {
         host = new URL(/^https?:/i.test(host) ? host : `https://${host}`).hostname.replace(/^www\./, "");
       } catch {}
-      setBusy({ label: `${later ? "Saving" : "Reading"} ${host}` });
+      setBusy({ label: `${later ? t("add.statusWaiting") : t("add.saving")} ${host}` });
       // A link to a PDF is read here in the browser, with its progress in the bar.
-      const r = await importFromUrl(raw, (p, label) => setBusy({ label: label ?? `Reading ${host}`, pct: p }));
+      const r = await importFromUrl(raw, (p, label) => setBusy({ label: label ?? `${t("add.saving")} ${host}`, pct: p }));
       if (!r.ok) {
         setError(r.error);
         setErrorNeedsKey(Boolean(r.needKey));
@@ -97,7 +99,7 @@ export function Landing({ signedIn: signedInAtLoad = false }: { signedIn?: boole
       setUrl("");
       setSaved({ id: r.article.id, title: r.article.title, bookmark: Boolean(r.article.bookmark) });
     },
-    [finish]
+    [finish, t]
   );
 
   // A link handed in from elsewhere, by the bookmarklet or a share: /?url=… opens it, /?save=… shelves it for later.
@@ -122,9 +124,9 @@ export function Landing({ signedIn: signedInAtLoad = false }: { signedIn?: boole
     async (f: File) => {
       setError(null);
       setErrorNeedsKey(false);
-      setBusy({ label: `Opening ${f.name}`, pct: f.name.toLowerCase().endsWith(".pdf") ? 0 : undefined });
+      setBusy({ label: `${t("add.saving")} ${f.name}`, pct: f.name.toLowerCase().endsWith(".pdf") ? 0 : undefined });
       // The PDF reader reports what it is doing: "Reading 12 pages", then any scanned ones.
-      const r = await importFromFile(f, (p, label) => setBusy({ label: label ?? `Reading ${f.name}`, pct: p }));
+      const r = await importFromFile(f, (p, label) => setBusy({ label: label ?? `${t("add.saving")} ${f.name}`, pct: p }));
       if (r.ok) finish(r.article, r.file);
       else {
         setError(r.error);
@@ -132,7 +134,7 @@ export function Landing({ signedIn: signedInAtLoad = false }: { signedIn?: boole
         setBusy(null);
       }
     },
-    [finish]
+    [finish, t]
   );
 
   const fromText = useCallback(
@@ -147,17 +149,17 @@ export function Landing({ signedIn: signedInAtLoad = false }: { signedIn?: boole
 
   // Paste a link or a page of text anywhere. Drop a file anywhere. Slash to type.
   useEffect(() => {
-    const inField = (t: EventTarget | null) => (t as HTMLElement | null)?.closest?.("input, textarea, [contenteditable]");
+    const inField = (el: EventTarget | null) => (el as HTMLElement | null)?.closest?.("input, textarea, [contenteditable]");
     const onPaste = (e: ClipboardEvent) => {
       if (inField(e.target) || busy) return;
-      const t = e.clipboardData?.getData("text") ?? "";
-      if (looksLikeUrl(t)) {
+      const text = e.clipboardData?.getData("text") ?? "";
+      if (looksLikeUrl(text)) {
         e.preventDefault();
-        setUrl(t.trim());
-        fromUrl(t);
-      } else if (t.trim().split(/\s+/).length >= 40) {
+        setUrl(text.trim());
+        fromUrl(text);
+      } else if (text.trim().split(/\s+/).length >= 40) {
         e.preventDefault();
-        fromText(t);
+        fromText(text);
       }
     };
     const onKey = (e: KeyboardEvent) => {
@@ -209,7 +211,7 @@ export function Landing({ signedIn: signedInAtLoad = false }: { signedIn?: boole
     const mine = library.map((x) => ({
       id: x.id,
       title: x.title,
-      byline: x.author || x.source || (x.origin === "paste" ? "Pasted text" : "Imported"),
+      byline: x.author || x.source || (x.origin === "paste" ? t("byline.pasted") : t("byline.file")),
       words: x.words,
       pct: p(x.id),
       glosses: g(x.id),
@@ -230,7 +232,7 @@ export function Landing({ signedIn: signedInAtLoad = false }: { signedIn?: boole
     // What you are in the middle of comes first, then whatever was touched last.
     const reading = (x: ShelfItem) => Number(x.pct > 0 && x.pct < 1);
     return [...mine, ...samples].sort((a, b) => reading(b) - reading(a) || b.touched - a.touched);
-  }, [library, progress, glosses, hydrated, hiddenSamples]);
+  }, [library, progress, glosses, hydrated, hiddenSamples, t]);
 
   return (
     <div className={`landing relative z-[1] flex min-h-dvh flex-col transition-[opacity,filter,transform] duration-300 ease-[var(--ease-out)] ${leaving ? "scale-[0.995] opacity-0 blur-[2px]" : ""}`}>
@@ -281,8 +283,8 @@ export function Landing({ signedIn: signedInAtLoad = false }: { signedIn?: boole
       {dragging && (
         <div className="pointer-events-none fixed inset-0 z-[90] grid place-items-center bg-bg/80 backdrop-blur-sm" style={{ animation: "fade 0.15s" }}>
           <div className="rounded-[28px] border-[1.5px] border-dashed border-[var(--rubric)] px-16 py-14 text-center">
-            <p className="font-serif text-[40px] leading-none text-ink">Drop to read</p>
-            <p className="mt-3 text-[14px] text-ink-3">PDF, .txt or .md</p>
+            <p className="font-serif text-[40px] leading-none text-ink">{t("add.dropHere")}</p>
+            <p className="mt-3 text-[14px] text-ink-3">{t("err.format")}</p>
           </div>
         </div>
       )}

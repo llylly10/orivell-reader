@@ -6,6 +6,7 @@ import { openKeyMenu, readApiKey } from "@/lib/ask";
 import { readCarefully } from "@/lib/careful";
 import { startUpgrade, type UpgradeProgress } from "@/lib/upgrade";
 import { loadPdf, useGlosses, useHighlights } from "@/lib/store";
+import { useT } from "@/lib/lang-context";
 
 type State = { kind: "idle" } | { kind: "confirm" } | { kind: "reading" } | { kind: "done" } | { kind: "error"; error: string; needKey?: boolean };
 
@@ -15,6 +16,7 @@ type State = { kind: "idle" } | { kind: "confirm" } | { kind: "reading" } | { ki
  * only where this browser still has the file.
  */
 export function CarefulRead({ article }: { article: Article }) {
+  const t = useT();
   const [hasPdf, setHasPdf] = useState(false);
   const [state, setState] = useState<State>({ kind: "idle" });
   const [hasKey, setHasKey] = useState(false);
@@ -66,44 +68,43 @@ export function CarefulRead({ article }: { article: Article }) {
       )}
       {state.kind === "idle" && !upgrading?.active && (
         <p>
-          Columns, tables or maths look jumbled?{" "}
           <button type="button" onClick={start} className={link}>
-            Read it more carefully
+            {t("read.careful")}
           </button>
-          {!hasKey && <span className="text-ink-4"> · needs your Together key</span>}
+          {!hasKey && <span className="text-ink-4"> · {t("read.carefulLimit")}</span>}
         </p>
       )}
       {state.kind === "confirm" && (
         <p>
-          {`This replaces the text and clears your ${marks} ${marks === 1 ? "mark" : "marks"} on it. `}
+          {`${t("read.careful")} `}
           <button type="button" onClick={() => void run()} className={link}>
-            Read it again
+            {t("book.readAgain")}
           </button>
           {" · "}
           <button type="button" onClick={() => setState({ kind: "idle" })} className="underline-offset-4 hover:text-ink">
-            Keep this text
+            {t("common.cancel")}
           </button>
         </p>
       )}
       {state.kind === "reading" && (
         <p>
-          <span className="inline-block animate-pulse">Reading it more carefully, about ten seconds a page…</span>{" "}
+          <span className="inline-block animate-pulse">{t("read.carefulBusy")}</span>{" "}
           <button type="button" onClick={() => abort.current?.abort()} className="underline-offset-4 hover:text-ink hover:underline">
-            Stop
+            {t("card.stop")}
           </button>
         </p>
       )}
-      {state.kind === "done" && <p>Read again, more carefully.</p>}
+      {state.kind === "done" && <p>{t("read.carefulBusy")}</p>}
       {state.kind === "error" && (
         <p>
           <span className="text-rubric-text">{state.error}</span>{" "}
           {state.needKey ? (
             <button type="button" onClick={openKeyMenu} className={link}>
-              Add your Together key
+              {t("topbar.addKey")}
             </button>
           ) : (
             <button type="button" onClick={() => setState({ kind: "idle" })} className={link}>
-              Back
+              {t("common.close")}
             </button>
           )}
         </p>

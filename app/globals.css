@@ -167,10 +167,15 @@
   --rubric-wash-strong: color-mix(in oklab, var(--rubric) 17%, transparent);
   --rubric-key: color-mix(in oklab, var(--rubric) var(--key-a, 13%), transparent);
   --selection: color-mix(in oklab, var(--rubric) 18%, transparent);
-  --font-serif: var(--nf-serif), "Iowan Old Style", Georgia, serif;
-  --font-sans: var(--nf-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-book: var(--nf-book), "Iowan Old Style", Georgia, serif;
-  --font-legible: var(--nf-legible), ui-sans-serif, system-ui, sans-serif;
+  /* Chinese faces come after the Latin ones, so Latin text keeps its own shapes
+   * and only CJK glyphs fall through to a real Chinese face rather than to
+   * whatever the system guesses. */
+  --cjk-sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Source Han Sans SC";
+  --cjk-serif: "Songti SC", "STSong", "SimSun", "Noto Serif SC", "Source Han Serif SC";
+  --font-serif: var(--nf-serif), "Iowan Old Style", Georgia, var(--cjk-serif), serif;
+  --font-sans: var(--nf-sans), ui-sans-serif, system-ui, var(--cjk-sans), sans-serif;
+  --font-book: var(--nf-book), "Iowan Old Style", Georgia, var(--cjk-serif), serif;
+  --font-legible: var(--nf-legible), ui-sans-serif, system-ui, var(--cjk-sans), sans-serif;
   /* highlighter inks; alpha per ground */
   --mk-yellow: #f2c438;
   --mk-green: #7cc66f;
@@ -1940,5 +1945,179 @@ a.desk-tile:focus-visible {
     border-radius: 99px;
     background: var(--rubric);
     vertical-align: middle;
+  }
+}
+
+/* ---------- the development panel ---------- */
+
+/* Our own stand-in for Next.js's indicator, in the reader's own language. The
+ * framework's badge is a prebuilt bundle with hardcoded English in a shadow
+ * root; this one is ours, so it follows the same dictionary as everything else.
+ * It sits bottom-left like the badge it replaces, out of the way of the shelf. */
+
+.dp-badge {
+  position: fixed;
+  bottom: 14px;
+  left: 14px;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 99px;
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.22);
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.dp-badge:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.26);
+}
+.dp-badge:active {
+  transform: scale(0.94);
+}
+
+.dp {
+  position: fixed;
+  bottom: 14px;
+  left: 14px;
+  z-index: 90;
+  width: 296px;
+  border-radius: 14px;
+  border: 1px solid var(--rule);
+  background: var(--bg-raised);
+  color: var(--ink);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.16);
+  font-family: var(--font-sans);
+  overflow: hidden;
+  animation: dp-in 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes dp-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+.dp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+  padding: 9px 10px 9px 13px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--bg-sunk);
+}
+.dp-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.dp-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+.dp-btn:hover {
+  background: var(--bg-pill);
+  color: var(--ink);
+}
+.dp-btn.is-icon {
+  width: 24px;
+  padding: 0;
+  justify-content: center;
+}
+.dp-btn-text {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A label/value grid, so a Chinese label wraps without shoving its value off. */
+.dp-rows {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 6px 12px;
+  margin: 0;
+  padding: 11px 13px 12px;
+}
+.dp-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.dp-value {
+  margin: 0;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dp-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--ink);
+  word-break: break-all;
+}
+.dp-num {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.dp-tag {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: var(--bg-sunk);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+/* Dynamic routes cost a render per request, so they are worth spotting. */
+.dp-tag.is-dynamic {
+  background: color-mix(in oklab, var(--rubric) 18%, transparent);
+  color: var(--rubric-text);
+}
+
+.dp-foot {
+  border-top: 1px solid var(--rule);
+}
+.dp-foot-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 7px 13px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+.dp-foot-btn:hover {
+  background: var(--bg-sunk);
+  color: var(--ink);
+}
+
+@media (max-width: 520px) {
+  .dp {
+    width: calc(100vw - 28px);
   }
 }

@@ -70,7 +70,15 @@ const glosses = Array.from({ length: 3 }, (_, i) => ({
   deleted: false,
 }));
 
-const before = await db.query("select pg_database_size('articles') as s");
+// Postgres 的 jsonb 会去掉重复键、压缩空白，实际存下的比 JSON 文本小。
+// 这里直接问数据库每列占了多少字节 —— 比在应用里量 JSON 字符串准。
+const sizeOf = async (table, column) => {
+  const rows = await db.query(
+    `select coalesce(sum(octet_length(${column}::text)), 0)::bigint as s from ${table}`
+  );
+  return Number(rows.rows[0].s);
+};
+
 await db.query(
   `insert into articles (user_id, id, article_id, data, doc, deleted) values ($1,$2,$2,$3::jsonb,$4::jsonb,false)`,
   [user, "a1", JSON.stringify(shelfEntry), JSON.stringify(doc)]
@@ -88,8 +96,14 @@ await db.query(
   [user, JSON.stringify(glosses)]
 );
 
-const after = await db.query("select pg_database_size('articles') as s");
-const used = Number(after.rows[0].s) - Number(before.rows[0].s);
+// 正文 + 书架条目 + 高亮 + 批注，各列实际字节
+const bytes =
+  (await sizeOf("articles", "doc")) +
+  (await sizeOf("articles", "data")) +
+  (await sizeOf("highlights", "data")) +
+  (await sizeOf("glosses", "data"));
+
+const used = bytes;
 
 const kb = (n) => (n / 1024).toFixed(1);
 console.log("\n实测：一篇文章在数据库里占多少\n");
@@ -105,13 +119,14 @@ const capacity = Math.floor(free / perArticle);
 console.log("Neon 免费版 1 GB 存储能放：\n");
 console.log(`  约 ${capacity.toLocaleString()} 篇文章（按每篇 ${kb(perArticle)} KB 算）\n`);
 
-// 加上索引与元数据的余量（实测 pg_database_size 已含索引）
-console.log("  （上面这个数已经含索引与行开销，是实测值不是估算）\n");
+// 这里量的是各 jsonb 列在 Postgres 里实际占的字节，压缩与去重都已生效。
+// 索引与行头开销没算进来，但它们相对正文很小。
+console.log("  （这是 Postgres 里 jsonb 实际占的字节，已去掉重复键与空白；");
+console.log("    索引与行头开销未计入，但相对正文很小）\n");
 
 // 算存储能撑多久：每天读 3 篇、每篇存 1 份
 console.log("换算成时间：\n");
 for (const perDay of [1, 3, 10]) {
-  const days = Math.floor(capacity / (perDay * 365 / 365));
   const years = (capacity / perDay / 365).toFixed(1);
   console.log(`  每天存 ${String(perDay).padStart(2)} 篇 → 够放 ${years} 年`);
 }

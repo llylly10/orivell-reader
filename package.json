@@ -10,7 +10,8 @@
     "test": "node --test tests/",
     "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate.mjs",
     "db:check": "node --env-file-if-exists=.env.local scripts/check-db.js",
-    "db:verify": "node scripts/verify-schema.mjs"
+    "db:verify": "node scripts/verify-schema.mjs",
+    "db:measure": "node scripts/measure-storage.mjs"
   },
   "dependencies": {
     "@clerk/localizations": "4.22.1",

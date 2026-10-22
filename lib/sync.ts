@@ -19,6 +19,7 @@
  * seconds, so what an agent saves arrives while you look.
  */
 
+import { useEffect, useState } from "react";
 import { forgetDoc, loadDoc, saveDoc, useStore, type RemoteChanges } from "./store";
 import type { Article } from "./article";
 import { forgetCover } from "./covers";
@@ -85,6 +86,44 @@ export function watchShelf(): () => void {
   };
 }
 
+/* ---------- what the sync is doing, for the reader to see ---------- */
+
+/**
+ * Where the account sync stands.
+ *
+ * `off` is the resting state. `working` is a push or pull in flight. `error`
+ * is a failure worth telling the reader about: the shelf is safe on this
+ * device, but it is not reaching the account, and the reader should know that
+ * rather than find out later.
+ */
+export type SyncState = "off" | "working" | "error";
+
+let state: SyncState = "off";
+const stateListeners = new Set<(s: SyncState) => void>();
+
+function setState(s: SyncState) {
+  if (state === s) return;
+  state = s;
+  for (const fn of stateListeners) fn(s);
+}
+
+/** The sync's current state, and a way to hear about changes. */
+export function useSyncState(): SyncState {
+  const [s, setLocal] = useState<SyncState>(state);
+  useEffect(() => {
+    setLocal(state);
+    stateListeners.add(setLocal);
+    return () => {
+      stateListeners.delete(setLocal);
+    };
+  }, []);
+  return s;
+}
+
+/** The reason the last sync failed, if it did. For the reader's own eyes. */
+let lastError: string | null = null;
+export const syncError = () => lastError;
+
 const emptyBaseline = (): Baseline => ({ since: null, seen: Object.fromEntries(COLLECTIONS.map((c) => [c, {}])) as Baseline["seen"] });
 
 export function startSync(userId: string) {
@@ -103,7 +142,15 @@ export function startSync(userId: string) {
   let stopped = false;
   // One operation at a time: a pull never lands in the middle of a push.
   let chain: Promise<unknown> = Promise.resolve();
-  const serial = (fn: () => Promise<void>) => (chain = chain.then(() => (stopped ? undefined : fn())).catch(() => {}));
+  const serial = (fn: () => Promise<void>) =>
+    (chain = chain
+      .then(() => (stopped ? undefined : fn()))
+      .catch((e) => {
+        // A failure here is a failure to reach the account. The shelf itself
+        // is untouched on this device, so this is reported, not thrown.
+        lastError = e instanceof Error ? e.message : String(e);
+        setState("error");
+      }));
 
   async function push() {
     const { entities, busy } = snapshot();
@@ -158,6 +205,9 @@ export function startSync(userId: string) {
       bytes += r.size;
     }
     await flush();
+    // It reached the account, so any earlier failure is over.
+    lastError = null;
+    if (state === "error") setState("off");
   }
 
   async function pull() {
@@ -188,10 +238,21 @@ export function startSync(userId: string) {
     save();
   }
 
-  const sync = () => serial(async () => {
-    await pull();
-    await push();
-  });
+  const sync = () =>
+    serial(async () => {
+      setState("working");
+      try {
+        await pull();
+        await push();
+        lastError = null;
+        setState("off");
+      } catch (e) {
+        // The shelf is safe on this device; it is the copy on the account that
+        // is behind. Say so, rather than failing silently.
+        lastError = e instanceof Error ? e.message : String(e);
+        setState("error");
+      }
+    });
 
   let timer: ReturnType<typeof setTimeout> | null = null;
   const unsubscribe = useStore.subscribe((st, prev) => {

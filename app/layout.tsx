@@ -6,6 +6,7 @@ import "./globals.css";
 import { Tooltips } from "@/components/ui/Tooltips";
 import { ClerkLocaleProvider } from "@/components/account/ClerkLocaleProvider";
 import { SyncAgent } from "@/components/account/SyncAgent";
+import { SyncNotice } from "@/components/account/SyncNotice";
 import { OG_IMAGE, SITE_URL } from "@/lib/brand";
 import { LangProvider } from "@/lib/lang-context";
 import { DevPanel } from "@/components/ui/DevPanel";
@@ -74,6 +75,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <ClerkLocaleProvider>
             {children}
             <SyncAgent />
+            <SyncNotice />
             <DevPanel />
           </ClerkLocaleProvider>
         </LangProvider>

@@ -19,17 +19,27 @@ const CHROME =
   process.env.CHROME_PATH ||
   "C:\\Users\\Administrator\\AppData\\Local\\ms-playwright\\chromium-1243\\chrome-win64\\chrome.exe";
 const BASE = process.env.BASE_URL || "http://127.0.0.1:3100";
-const FAPI = "https://discrete-pug-2216.clerk.accounts.dev";
 const OUT = path.join(__dirname, "..", "verify-shots");
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const SECRET = fs
-  .readFileSync(path.join(__dirname, "..", ".env.local"), "utf8")
-  .split("\n")
+const ENV_TEXT = fs.readFileSync(path.join(__dirname, "..", ".env.local"), "utf8");
+
+const SECRET = ENV_TEXT.split("\n")
   .find((l) => l.startsWith("CLERK_SECRET_KEY="))
   .split("=")[1]
   .trim();
+
+/** 前端 API 域名：跟着 .env.local 里的 publishable key 走，换实例不用改脚本。 */
+const FAPI = (() => {
+  const pk = ENV_TEXT.split("\n")
+    .find((l) => l.startsWith("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="))
+    .split("=")[1]
+    .trim();
+  const domain = Buffer.from(pk.replace(/^pk_(test|live)_/, ""), "base64url").toString("utf8").replace(/\$$/, "");
+  return `https://${domain}`;
+})();
+
 
 /** 调 Clerk Backend API。 */
 function bapi(method, p, body) {
@@ -50,11 +60,14 @@ function bapi(method, p, body) {
         let b = "";
         res.on("data", (c) => (b += c));
         res.on("end", () => {
+          let parsed;
           try {
-            resolve(JSON.parse(b));
+            parsed = JSON.parse(b);
           } catch {
-            resolve({ raw: b.slice(0, 300), status: res.statusCode });
+            parsed = { raw: b.slice(0, 300) };
           }
+          // 带上状态码：删除接口成功时返回 200 与一个空 body
+          resolve({ ...parsed, status: res.statusCode });
         });
       }
     );
@@ -218,6 +231,11 @@ function bapi(method, p, body) {
   await page.screenshot({ path: path.join(OUT, "signed-out-home.png") });
 
   report.errors = errors;
+
+  // 8. 清理测试用户：验证不该在实例里留垃圾
+  const del = await bapi("DELETE", `/v1/users/${created.id}`);
+  report.cleanup = { deleted: del.status === 200, status: del.status };
+
   console.log(JSON.stringify(report, null, 2));
   await browser.close();
 })().catch((e) => {

@@ -34,6 +34,12 @@ export const CLERK_APPEARANCE = {
     footerActionLink: "text-ink underline decoration-rule-strong underline-offset-4",
     identityPreviewText: "text-ink-2",
     alternativeFlow: "text-ink-3",
+    // The sign-in and sign-up pop-ups sit in the middle of the screen rather
+    // than hanging from the top of it. Clerk's backdrop aligns to the top and
+    // gives the card a top margin, so both are undone here: the backdrop
+    // centres its child, and the card's margin goes away.
+    modalBackdrop: "!items-center",
+    modalContent: "!m-0",
   },
 } as const;
 
@@ -73,6 +79,17 @@ const OVERRIDES = {
         subtitle: `继续使用 ${NAME}`,
       },
     },
+    // Clerk's own zh-CN resource leaves these input placeholders untranslated,
+    // so the password field asks for a password in English. They are the only
+    // strings a reader meets on the sign-in and sign-up screens, so they are
+    // filled in here.
+    formFieldInputPlaceholder__password: "请输入密码",
+    formFieldInputPlaceholder__signUpPassword: "设置一个密码",
+    formFieldInputPlaceholder__firstName: "请输入名字",
+    formFieldInputPlaceholder__lastName: "请输入姓氏",
+    formFieldInputPlaceholder__username: "请输入用户名",
+    formFieldInputPlaceholder__phoneNumber: "请输入电话号码",
+    formFieldInputPlaceholder__backupCode: "请输入备用代码",
   },
 } as const;
 

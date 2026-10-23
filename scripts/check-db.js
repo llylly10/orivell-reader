@@ -17,6 +17,7 @@
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
+const { neon } = require("@neondatabase/serverless");
 
 const ROOT = path.join(__dirname, "..");
 const ENV_PATH = path.join(ROOT, ".env.local");
@@ -44,42 +45,19 @@ function get(name) {
   return m ? m[1].trim() : "";
 }
 
-function neonQuery(sql, params = []) {
-  const url = get("DATABASE_URL");
-  if (!url) throw new Error("DATABASE_URL is not set");
-  const u = new URL(url);
-  const body = JSON.stringify({ query: sql, params });
-  return new Promise((resolve, reject) => {
-    const req = https.request(
-      {
-        host: u.hostname,
-        path: u.pathname,
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Neon-Connection-String": url,
-          ...(u.searchParams.get("channel_binding") ? { "Neon-Channel-Binding": u.searchParams.get("channel_binding") } : {}),
-          "Content-Length": Buffer.byteLength(body),
-        },
-      },
-      (res) => {
-        let b = "";
-        res.on("data", (c) => (b += c));
-        res.on("end", () => {
-          try {
-            const j = JSON.parse(b);
-            if (j.error) reject(new Error(j.error.message || JSON.stringify(j.error)));
-            else resolve(j.result?.rows ?? j.rows ?? []);
-          } catch (e) {
-            reject(new Error(`bad response: ${b.slice(0, 200)}`));
-          }
-        });
-      }
-    );
-    req.on("error", reject);
-    req.write(body);
-    req.end();
-  });
+/** 走 Neon 官方的 serverless 驱动，和应用里用的是同一个。 */
+let client = null;
+let url = "";
+function db() {
+  if (!client) {
+    const { neon } = require("@neondatabase/serverless");
+    client = neon(url);
+  }
+  return client;
+}
+/** 查一行行结果。 */
+async function query(sql, params = []) {
+  return db().query(sql, params);
 }
 
 const ok = (m) => console.log(`  ✅ ${m}`);
@@ -90,7 +68,7 @@ const warn = (m) => console.log(`  ⚠️  ${m}`);
   console.log("数据库体检\n");
 
   // 1. 配置
-  const url = get("DATABASE_URL");
+  url = get("DATABASE_URL");
   if (!url) {
     bad("DATABASE_URL 没有设置");
     console.log("\n接上数据库三步：");
@@ -107,7 +85,7 @@ const warn = (m) => console.log(`  ⚠️  ${m}`);
   // 2. 连通
   let now;
   try {
-    const rows = await neonQuery("select now() as now");
+    const rows = await query("select now() as now");
     now = rows[0]?.now;
     ok(`连上了，服务器时间 ${now}`);
   } catch (e) {
@@ -116,7 +94,7 @@ const warn = (m) => console.log(`  ⚠️  ${m}`);
   }
 
   // 3. 表
-  const tables = await neonQuery("select table_name from information_schema.tables where table_schema = 'public'");
+  const tables = await query("select table_name from information_schema.tables where table_schema = 'public'");
   const have = new Set(tables.map((t) => t.table_name));
   const missing = TABLES.filter((t) => !have.has(t));
   if (missing.length) {
@@ -127,7 +105,7 @@ const warn = (m) => console.log(`  ⚠️  ${m}`);
   }
 
   // 4. 索引
-  const idx = await neonQuery("select indexname from pg_indexes where schemaname = 'public'");
+  const idx = await query("select indexname from pg_indexes where schemaname = 'public'");
   const haveIdx = new Set(idx.map((i) => i.indexname));
   const missingIdx = INDEXES.filter(([, n]) => !haveIdx.has(n));
   if (missingIdx.length) {
@@ -140,15 +118,15 @@ const warn = (m) => console.log(`  ⚠️  ${m}`);
   // 5. 读写往返
   const probe = `__check_${Date.now()}`;
   try {
-    await neonQuery("insert into progress (user_id, id, article_id, data, deleted) values ($1,$2,$2,$3::jsonb,false)", [
+    await query("insert into progress (user_id, id, article_id, data, deleted) values ($1,$2,$2,$3::jsonb,false)", [
       probe,
       probe,
       JSON.stringify({ pct: 0.5 }),
     ]);
-    const back = await neonQuery("select data from progress where user_id = $1 and id = $2", [probe, probe]);
+    const back = await query("select data from progress where user_id = $1 and id = $2", [probe, probe]);
     const okRead = back.length === 1 && back[0].data?.pct === 0.5;
-    await neonQuery("delete from progress where user_id = $1 and id = $2", [probe, probe]);
-    const gone = await neonQuery("select id from progress where user_id = $1 and id = $2", [probe, probe]);
+    await query("delete from progress where user_id = $1 and id = $2", [probe, probe]);
+    const gone = await query("select id from progress where user_id = $1 and id = $2", [probe, probe]);
     if (okRead && gone.length === 0) ok("写入、读回、删除都正常");
     else bad(`读写往返不对（读回 ${JSON.stringify(back[0]?.data)}）`);
   } catch (e) {
@@ -157,7 +135,7 @@ const warn = (m) => console.log(`  ⚠️  ${m}`);
 
   // 6. free_usage 的额度字段
   try {
-    const rows = await neonQuery("select column_name from information_schema.columns where table_name = 'free_usage'");
+    const rows = await query("select column_name from information_schema.columns where table_name = 'free_usage'");
     const cols = rows.map((r) => r.column_name);
     if (cols.includes("usd")) ok("free_usage 有 usd 列（按金额计费已就绪）");
     else bad("free_usage 缺 usd 列，跑 npm run db:migrate 补上");
@@ -168,7 +146,7 @@ const warn = (m) => console.log(`  ⚠️  ${m}`);
   // 7. 数据概况
   try {
     for (const t of ["articles", "highlights", "glosses", "progress", "agent_tokens"]) {
-      const rows = await neonQuery(`select count(*)::int as n from ${t}`);
+      const rows = await query(`select count(*)::int as n from ${t}`);
       const n = rows[0]?.n ?? 0;
       if (n) console.log(`     ${t}: ${n} 行`);
     }

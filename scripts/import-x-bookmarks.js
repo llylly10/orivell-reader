@@ -17,6 +17,7 @@
  */
 import { readFileSync, existsSync } from "node:fs";
 import { createRequire } from "node:module";
+import { neon } from "@neondatabase/serverless";
 
 const require = createRequire(import.meta.url);
 const DRY = process.argv.includes("--dry");
@@ -31,45 +32,12 @@ const env = (name) => {
 };
 const DATABASE_URL = env("DATABASE_URL");
 
-/* ---------- Neon HTTP ---------- */
-function neonQuery(url, sql, params = []) {
-  const u = new URL(url);
-  const body = JSON.stringify({ query: sql, params });
-  return new Promise((resolve, reject) => {
-    const req = https.request(
-      {
-        host: u.hostname,
-        path: u.pathname,
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Neon-Connection-String": url,
-          ...(u.searchParams.get("channel_binding")
-            ? { "Neon-Channel-Binding": u.searchParams.get("channel_binding") }
-            : {}),
-          "Content-Length": Buffer.byteLength(body),
-        },
-      },
-      (res) => {
-        let b = "";
-        res.on("data", (c) => (b += c));
-        res.on("end", () => {
-          try {
-            const j = JSON.parse(b);
-            if (j.error) reject(new Error(j.error.message || JSON.stringify(j.error)));
-            else resolve(j.result?.rows ?? j.rows ?? []);
-          } catch {
-            reject(new Error(`响应不对：${b.slice(0, 200)}`));
-          }
-        });
-      }
-    );
-    req.on("error", reject);
-    req.write(body);
-    req.end();
-  });
-}
-import https from "node:https";
+/** Neon 官方的 serverless 驱动，和应用里用的是同一个。 */
+let client = null;
+const sql = () => {
+  if (!client) client = neon(DATABASE_URL);
+  return client;
+};
 
 // 转换器与检验脚本共用一份，改一处两处都跟着变。
 import { toBlocks } from "./lib-import-blocks.mjs";
@@ -147,8 +115,7 @@ const BATCH = 50;
 let done = 0;
 for (let i = 0; i < items.length; i += BATCH) {
   const slice = items.slice(i, i + BATCH);
-  await neonQuery(
-    DATABASE_URL,
+  await sql().query(
     `insert into articles (user_id, id, article_id, data, doc, deleted, updated_at)
      select $1, r.id, r.id, r.data, r.doc, false, now()
      from jsonb_to_recordset($2::jsonb) as r(id text, data jsonb, doc jsonb)
@@ -168,8 +135,7 @@ const prog = rows
 if (prog.length) {
   for (let i = 0; i < prog.length; i += BATCH) {
     const slice = prog.slice(i, i + BATCH);
-    await neonQuery(
-      DATABASE_URL,
+    await sql().query(
       `insert into progress (user_id, id, article_id, data, deleted, updated_at)
        select $1, r.id, r.id, r.data, false, now()
        from jsonb_to_recordset($2::jsonb) as r(id text, data jsonb)
@@ -180,6 +146,6 @@ if (prog.length) {
   console.log(`  另外导入了 ${prog.length} 条阅读进度`);
 }
 
-const check = await neonQuery(DATABASE_URL, "select count(*)::int as n from articles where user_id = $1", [userId]);
+const check = await sql().query("select count(*)::int as n from articles where user_id = $1", [userId]);
 console.log(`  库里现在有 ${check[0].n} 篇文章（这个账号）`);
 console.log("\n  完事。打开书架应该就能看到你的 X 书签了。\n");

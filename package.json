@@ -11,7 +11,10 @@
     "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate.mjs",
     "db:check": "node --env-file-if-exists=.env.local scripts/check-db.js",
     "db:verify": "node scripts/verify-schema.mjs",
-    "db:measure": "node scripts/measure-storage.mjs"
+    "db:measure": "node scripts/measure-storage.mjs",
+    "db:measure-traffic": "node scripts/measure-traffic.mjs",
+    "db:measure-http": "node scripts/measure-http-cost.mjs",
+    "db:measure-query": "node scripts/measure-query-cost.mjs"
   },
   "dependencies": {
     "@clerk/localizations": "4.22.1",

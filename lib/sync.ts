@@ -75,7 +75,25 @@ function snapshot(): Snapshot {
 /** Pages that want arrivals as they happen, and how to tell the running sync. */
 let watchers = 0;
 let poke: (() => void) | null = null;
-const WATCH_MS = 5000;
+
+/**
+ * How often a page that is watching the shelf pulls.
+ *
+ * Five seconds is responsive, and it is also one pull every five seconds per
+ * reader — which is a lot of queries once there are more than a handful of
+ * readers. A longer wait costs nothing in practice: what arrives late is
+ * something an agent saved, and it is just as useful a minute later.
+ *
+ * `NEXT_PUBLIC_SYNC_INTERVAL_MS` raises it when the database is shared with
+ * many readers.
+ */
+const WATCH_MS = (() => {
+  const raw = Number(process.env.NEXT_PUBLIC_SYNC_INTERVAL_MS);
+  return Number.isFinite(raw) && raw >= 1000 ? raw : 5000;
+})();
+
+/** How often a page that is not watching the shelf pulls. Longer than WATCH_MS. */
+const IDLE_MS = WATCH_MS * 4;
 
 /** Pull now and every few seconds while the returned stop hasn't been called. */
 export function watchShelf(): () => void {
@@ -270,7 +288,7 @@ export function startSync(userId: string) {
   };
   const onVisible = () => {
     if (document.visibilityState === "hidden") serial(push);
-    else pullIfStale(watchers ? WATCH_MS : 20_000);
+    else pullIfStale(watchers ? WATCH_MS : IDLE_MS);
   };
   document.addEventListener("visibilitychange", onVisible);
   const ticker = setInterval(() => watchers && pullIfStale(WATCH_MS - 1000), WATCH_MS);

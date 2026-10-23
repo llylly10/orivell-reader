@@ -14,7 +14,8 @@
     "db:measure": "node scripts/measure-storage.mjs",
     "db:measure-traffic": "node scripts/measure-traffic.mjs",
     "db:measure-http": "node scripts/measure-http-cost.mjs",
-    "db:measure-query": "node scripts/measure-query-cost.mjs"
+    "db:measure-query": "node scripts/measure-query-cost.mjs",
+    "db:measure-real": "node --experimental-sqlite scripts/measure-real-data.mjs"
   },
   "dependencies": {
     "@clerk/localizations": "4.22.1",

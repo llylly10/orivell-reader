@@ -15,7 +15,10 @@
     "db:measure-traffic": "node scripts/measure-traffic.mjs",
     "db:measure-http": "node scripts/measure-http-cost.mjs",
     "db:measure-query": "node scripts/measure-query-cost.mjs",
-    "db:measure-real": "node --experimental-sqlite scripts/measure-real-data.mjs"
+    "db:measure-real": "node --experimental-sqlite scripts/measure-real-data.mjs",
+    "db:import-x": "node --experimental-sqlite scripts/import-x-bookmarks.js",
+    "db:verify-import": "node --experimental-sqlite scripts/verify-import.mjs",
+    "db:connect": "node scripts/connect-neon.js"
   },
   "dependencies": {
     "@clerk/localizations": "4.22.1",

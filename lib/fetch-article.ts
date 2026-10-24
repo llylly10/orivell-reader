@@ -12,6 +12,7 @@ import { Readability } from "@mozilla/readability";
 import { htmlToBlocks } from "@/lib/html-to-blocks";
 import { slugify, tidyTitle, undash, type Article, type Block } from "@/lib/article";
 import { bookmarkBlocks, isTooLittle } from "@/lib/bookmark";
+import { tweetCard } from "@/lib/tweet";
 import { APP_UA } from "@/lib/together";
 
 const MAX_BYTES = 6_000_000;
@@ -105,21 +106,6 @@ function revealStreamed(doc: Document) {
   }
 }
 
-const SOCIAL = /^(x\.com|twitter\.com|mobile\.twitter\.com|threads\.net|bsky\.app|instagram\.com|facebook\.com|linkedin\.com\/posts)/;
-const VIDEO = /^(youtube\.com|m\.youtube\.com|music\.youtube\.com|youtu\.be|vimeo\.com|tiktok\.com)\//;
-
-/** Links that are a post or a video rather than an article: their pages are script shells with nothing to read. */
-export function notAnArticle(url: string): "social" | "video" | null {
-  let u: URL;
-  try {
-    u = new URL(/^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`);
-  } catch {
-    return null;
-  }
-  const at = `${u.hostname.replace(/^www\./, "")}${u.pathname}`;
-  return SOCIAL.test(at) ? "social" : VIDEO.test(at) ? "video" : null;
-}
-
 /** arXiv ids: new style (2610.07469v2) and old style (cs/9605103, math.GT/0309136). */
 const ARXIV = /^(?:www\.|export\.)?arxiv\.org\/(?:abs|pdf)\/((?:\d{4}\.\d{4,5}|[a-z-]+(?:\.[A-Z]{2})?\/\d{7})(?:v\d+)?)(?:\.pdf)?\/?$/;
 
@@ -187,9 +173,13 @@ function pageMeta(document: Document): { title?: string; dek?: string; site?: st
 export async function fetchArticle(raw: string, opts: { pdf?: boolean } = {}): Promise<FetchResult> {
   const checked = await safeUrl((opts.pdf && arxivFullText(raw, "pdf")) || raw.trim());
   if (typeof checked === "string") return { ok: false, error: checked, status: 400 };
-  const kind = notAnArticle(checked.toString());
-  if (kind === "social") return { ok: false, error: "That's a post, not an article. Open the link it shares, or copy the post and use Paste text.", status: 422 };
-  if (kind === "video") return { ok: false, error: "That's a video, and Gloss reads text. Copy its transcript and use Paste text.", status: 422 };
+
+  // An X status link becomes a tweet card — the same shape the bookmark pipeline
+  // shelves — instead of being turned away as "a post, not an article". When the
+  // lookups come up empty, the page itself still goes through the regular path
+  // below, where its og tags make a simple link card.
+  const tweet = await tweetCard(checked);
+  if (tweet) return { ok: true, article: tweet };
 
   // Follow redirects by hand so every hop gets the same private-address check.
   let res: Response | null = null;

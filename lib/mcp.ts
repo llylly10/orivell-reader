@@ -12,7 +12,7 @@ import { hashToken, looksLikeToken } from "./agent";
 import { normalizeUrl } from "./links";
 import { blockText, textToArticle, wordCount, type Article } from "./article";
 import { shelfOf, shelveForUser, tokenUser, type ShelfRow } from "./db";
-import { arxivFullText, fetchArticle, notAnArticle } from "./fetch-article";
+import { arxivFullText, fetchArticle } from "./fetch-article";
 import { TOPICS, isTopic, shelfDef, yearOf } from "./library";
 import { chargeFree, checkFreeUser } from "./quota";
 import { allow } from "./ratelimit";
@@ -199,9 +199,6 @@ async function saveArticles(userId: string, args: Record<string, unknown>, via: 
   const results: Saved[] = [];
 
   const one = async ({ url, key }: { url: string; key: string }): Promise<Saved> => {
-    const kind = notAnArticle(url);
-    if (kind === "social") return { url, status: "failed", reason: "This is a social post, not an article. Send the link the post points to, or, if the post is the piece, read it and send its text with save_text." };
-    if (kind === "video") return { url, status: "failed", reason: "This is a video, not an article. Gloss reads text: send its transcript with save_text." };
     const known = have.get(key);
     if (known) return { url, status: "already_saved", title: String(known.data.title ?? ""), topic: shelfDef(typeof known.data.topic === "string" ? known.data.topic : "unsorted").name };
     if (budget <= 0) return { url, status: "failed", reason: `The daily limit of ${PER_DAY} saves is reached. Try again tomorrow.` };

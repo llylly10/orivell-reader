@@ -5,6 +5,7 @@
  */
 
 import { lookup } from "node:dns/promises";
+import { existsSync } from "node:fs";
 import { isIP } from "node:net";
 import { parseHTML } from "linkedom";
 import { imageStem, leadImage, prepareImages } from "@/lib/images";
@@ -13,6 +14,7 @@ import { htmlToBlocks } from "@/lib/html-to-blocks";
 import { slugify, tidyTitle, undash, type Article, type Block } from "@/lib/article";
 import { bookmarkBlocks, isTooLittle } from "@/lib/bookmark";
 import { tweetCard } from "@/lib/tweet";
+import { cnCard } from "@/lib/cn";
 import { APP_UA } from "@/lib/together";
 
 const MAX_BYTES = 6_000_000;
@@ -181,6 +183,12 @@ export async function fetchArticle(raw: string, opts: { pdf?: boolean } = {}): P
   const tweet = await tweetCard(checked);
   if (tweet) return { ok: true, article: tweet };
 
+  // Chinese platforms (login walls, signed APIs) go through the MediaCrawler
+  // sidecar with a saved login state. Null when it's down or has no login for
+  // the platform — the regular path below still makes a link card from og tags.
+  const cn = await cnCard(checked);
+  if (cn) return { ok: true, article: cn };
+
   // Follow redirects by hand so every hop gets the same private-address check.
   let res: Response | null = null;
   let target: URL = checked;
@@ -201,8 +209,10 @@ export async function fetchArticle(raw: string, opts: { pdf?: boolean } = {}): P
       target = next;
     }
   } catch {
-    return { ok: false, error: "The site did not answer in time.", status: 502 };
+    res = null;
   }
+  let direct: FetchResult;
+  let allowFallback = false;
   if (!res || !res.ok) {
     const status = res?.status ?? 0;
     const msg =
@@ -211,8 +221,9 @@ export async function fetchArticle(raw: string, opts: { pdf?: boolean } = {}): P
         : status === 404
           ? "That page was not found. Check the link."
           : `The site answered ${status || "nothing"}. Try again, or paste the text instead.`;
-    return { ok: false, error: msg, status: 502 };
-  }
+    direct = { ok: false, error: msg, status: 502 };
+    allowFallback = true;
+  } else {
 
   const type = res.headers.get("content-type") ?? "";
   if (type.includes("application/pdf") && opts.pdf) {
@@ -228,8 +239,18 @@ export async function fetchArticle(raw: string, opts: { pdf?: boolean } = {}): P
 
   const buf = await res.arrayBuffer();
   if (buf.byteLength > MAX_BYTES) return { ok: false, error: "That page is too large to import.", status: 413 };
-  const html = new TextDecoder().decode(buf);
+  direct = articleFromHtml(new TextDecoder().decode(buf), target);
+  allowFallback = direct.ok && "article" in direct && Boolean(direct.article.bookmark);
+  }
+  if (allowFallback) {
+    const saved = await withFallbacks(target);
+    if (saved) return { ok: true, article: saved };
+  }
+  return direct;
+}
 
+/** Turn fetched HTML into an Article, or a link card when the page held too little to read. Pure: no network. */
+function articleFromHtml(html: string, target: URL): FetchResult {
   const { document } = parseHTML(html);
   const meta = pageMeta(document as unknown as Document);
   // Readability resolves relative links against the document URL.
@@ -315,4 +336,59 @@ export async function fetchArticle(raw: string, opts: { pdf?: boolean } = {}): P
     addedAt: Date.now(),
   };
   return { ok: true, article };
+}
+
+/** Fallback layers, in order: Jina's reader renders the page elsewhere and hands back its DOM;
+    a local headless Chrome renders it here. The first layer that yields a full article —
+    not a link card — wins. Layers fire only when the page itself refused or held too little. */
+async function withFallbacks(target: URL): Promise<Article | null> {
+  for (const layer of [jinaHtml, renderedHtml]) {
+    const html = await layer(target);
+    if (!html) continue;
+    const r = articleFromHtml(html, target);
+    if (r.ok && "article" in r && !r.article.bookmark) return r.article;
+  }
+  return null;
+}
+
+/** Layer 1: Jina's reader. It renders the page in its own browser and serves the DOM as HTML.
+    Free without a key at 20 requests a minute; Chinese login walls still stop it. */
+async function jinaHtml(url: URL): Promise<string | null> {
+  try {
+    const res = await fetch(`https://r.jina.ai/${url.toString()}`, {
+      headers: { "X-Return-Format": "html" },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    return html.includes("<") ? html : null;
+  } catch {
+    return null;
+  }
+}
+
+const RENDER_CHROME = process.env.CHROME_PATH || "C:/Users/Administrator/AppData/Local/ms-playwright/chromium-1243/chrome-win64/chrome.exe";
+
+/** Layer 2: the page rendered by a local headless Chrome. The browser walks visitor-system
+    redirects by itself; login-walled sites still need cookies, which are not injected here. */
+async function renderedHtml(url: URL): Promise<string | null> {
+  if (!existsSync(RENDER_CHROME)) return null;
+  try {
+    const puppeteer = await import("puppeteer-core");
+    const browser = await puppeteer.launch({
+      executablePath: RENDER_CHROME,
+      headless: true,
+      args: ["--no-sandbox", "--disable-dev-shm-usage", "--no-first-run", "--disable-features=AutomationControlled"],
+    });
+    try {
+      const page = await browser.newPage();
+      await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+      await page.goto(url.toString(), { waitUntil: "networkidle2", timeout: 45_000 });
+      return await page.content();
+    } finally {
+      await browser.close();
+    }
+  } catch {
+    return null;
+  }
 }

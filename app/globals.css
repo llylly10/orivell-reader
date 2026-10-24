@@ -1835,6 +1835,14 @@ a.desk-tile:focus-visible {
   filter: brightness(0.9);
 }
 
+/* A figure that is a video: 16:9 until the metadata says otherwise, letterboxed on black. */
+.prose-read video.fig-img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: #000;
+}
+
 .prose-read .blk[data-type="figure"] .blk-text {
   margin-top: 0.75em;
   font-family: var(--font-sans);

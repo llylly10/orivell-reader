@@ -139,6 +139,38 @@ function Picture({ src, alt }: { src: string; alt?: string }) {
   );
 }
 
+/** A figure src that is a video rather than a picture: X's video CDN and plain media files. */
+function isVideoSrc(src: string): boolean {
+  try {
+    const u = new URL(src);
+    return /(^|\.)video\.twimg\.com$/i.test(u.hostname) || /\.(mp4|webm|ogv|mov)$/i.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
+/** A figure that is a video. Rendered as an <img> it fails to load and gets dropped, so it
+    gets its own element: same sizing and fade-in as a picture, with its own controls.
+    X's video CDN 403s browser requests whose Referer is not x.com, and a media element
+    cannot opt out the way an <img> can, so the file is streamed through the server
+    (/api/media/video) and reaches the player same-origin. */
+function VideoFigure({ src, alt }: { src: string; alt?: string }) {
+  const [state, setState] = useState<"loading" | "ok" | "gone">("loading");
+  if (state === "gone") return null;
+  return (
+    <video
+      src={`/api/media/video?u=${encodeURIComponent(src)}`}
+      controls
+      playsInline
+      preload="metadata"
+      aria-label={alt}
+      className={`fig-img${state === "ok" ? " is-loaded" : ""}`}
+      onLoadedMetadata={(e) => (e.currentTarget.videoWidth < 48 ? setState("gone") : setState("ok"))}
+      onError={() => setState("gone")}
+    />
+  );
+}
+
 function Table({ rows, head }: { rows: string[][]; head?: boolean }) {
   const t = useT();
   const body = head ? rows.slice(1) : rows;
@@ -197,7 +229,7 @@ function BlockImpl({ block, n, first, marks, activeGloss, hoverGloss, activeHigh
           {n}
         </button>
       )}
-      {block.type === "figure" && block.src && <Picture src={block.src} alt={block.alt} />}
+      {block.type === "figure" && block.src && (isVideoSrc(block.src) ? <VideoFigure src={block.src} alt={block.alt} /> : <Picture src={block.src} alt={block.alt} />)}
       {block.type === "table" && block.rows ? (
         <Table rows={block.rows} head={block.head} />
       ) : block.type === "figure" ? (

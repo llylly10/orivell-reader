@@ -6,7 +6,8 @@
  *
  * - Push: what changed since the last push, found by comparing each entity's
  *   stable JSON with a baseline of what the server already has. Deletions are
- *   entities in the baseline that are gone locally, sent as tombstones.
+ *   the rows the shelf itself watched leave it, sent as tombstones — never a
+ *   row the account has that this device merely fails to hold.
  * - Pull: rows changed since the last pull, merged in with applyRemote. The
  *   baseline then records them, so they are not pushed straight back.
  * - Texts travel separately: pushed once with the shelf entry, fetched on
@@ -20,7 +21,18 @@
  */
 
 import { useEffect, useState } from "react";
-import { forgetDoc, loadDoc, saveDoc, useStore, type RemoteChanges } from "./store";
+import {
+  forgetDoc,
+  forgetRemovals,
+  loadDoc,
+  onLocalStorageFull,
+  pendingRemovals,
+  persistShelf,
+  saveDoc,
+  useStore,
+  type RemoteChanges,
+  type ShelfRows,
+} from "./store";
 import type { Article } from "./article";
 import { forgetCover } from "./covers";
 
@@ -29,7 +41,13 @@ type Collection = (typeof COLLECTIONS)[number];
 
 type Entity = { articleId: string; data: unknown; key: string };
 type Snapshot = { entities: Record<Collection, Map<string, Entity>>; busy: Set<string> };
-type Baseline = { since: string | null; seen: Record<Collection, Record<string, [key: string, articleId: string]>> };
+
+type Baseline = {
+  since: string | null;
+  /** What the server has, and at what content key. */
+  seen: Record<Collection, Record<string, [key: string, articleId: string]>>;
+};
+
 type OutRow = { id: string; articleId: string; data: unknown; deleted?: boolean; doc?: Article };
 
 /** Pushes are split to stay well under the 4.5MB request cap. */
@@ -142,7 +160,10 @@ export function useSyncState(): SyncState {
 let lastError: string | null = null;
 export const syncError = () => lastError;
 
-const emptyBaseline = (): Baseline => ({ since: null, seen: Object.fromEntries(COLLECTIONS.map((c) => [c, {}])) as Baseline["seen"] });
+const emptyBaseline = (): Baseline => ({
+  since: null,
+  seen: Object.fromEntries(COLLECTIONS.map((c) => [c, {}])) as Baseline["seen"],
+});
 
 export function startSync(userId: string) {
   const storeKey = `gloss:sync:${userId}`;
@@ -171,6 +192,11 @@ export function startSync(userId: string) {
       }));
 
   async function push() {
+    // The shelf goes to disk first, so a deletion the reader just made is
+    // witnessed before anything is pushed about it. A write that does not
+    // fit witnesses nothing, and nothing is claimed about the account
+    // because of it.
+    persistShelf();
     const { entities, busy } = snapshot();
     const rows: { c: Collection; row: OutRow; key: string | null; size: number }[] = [];
     for (const c of COLLECTIONS) {
@@ -186,9 +212,23 @@ export function startSync(userId: string) {
         }
         rows.push({ c, row, key: e.key, size: JSON.stringify(row).length });
       }
-      for (const [id, [, articleId]] of Object.entries(seen)) {
-        if (entities[c].has(id) || busy.has(`${c}:${id}`)) continue;
-        rows.push({ c, row: { id, articleId, data: {}, deleted: true }, key: null, size: id.length + articleId.length + 64 });
+      // A row the reader took off the shelf.
+      //
+      // This is the only thing that counts as a deletion. The shelf records
+      // what left it, and only a write to disk can witness that: a row that
+      // was on the shelf and is not any more was taken off it by the reader.
+      //
+      // Everything else — a row the account has but this device never stored,
+      // a shelf that could not be written, a baseline that remembers rows
+      // this device has not seen — is not a deletion, and is never pushed as
+      // one. Those are the cases that used to empty the account.
+      //
+      // The removal is remembered in the shelf, so a refresh between the
+      // reader's removal and this push does not lose it.
+      for (const r of pendingRemovals()[c]) {
+        if (entities[c].has(r.id)) continue;
+        if (busy.has(`${c}:${r.id}`)) continue;
+        rows.push({ c, row: { id: r.id, articleId: r.articleId, data: {}, deleted: true }, key: null, size: r.id.length + r.articleId.length + 64 });
       }
     }
     if (!rows.length) return;
@@ -209,10 +249,17 @@ export function startSync(userId: string) {
       for (const r of batch) (changes[r.c] ??= []).push(r.row);
       const res = await fetch("/api/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ changes }) });
       if (!res.ok) throw new Error(`push ${res.status}`);
+      // The account has been told. A row that was taken off the shelf need
+      // not be told about again; a row that was pushed in its current form
+      // makes any earlier removal of it obsolete — the reader brought it
+      // back, and the account now holds what this device holds.
+      const told: ShelfRows = { articles: [], highlights: [], glosses: [], briefs: [], progress: [] };
       for (const r of batch) {
+        told[r.c].push({ id: r.row.id, articleId: r.row.articleId });
         if (r.key === null) delete base.seen[r.c][r.row.id];
         else base.seen[r.c][r.row.id] = [r.key, r.row.articleId];
       }
+      forgetRemovals(told);
       save();
       batch = [];
       bytes = 0;
@@ -243,16 +290,39 @@ export function startSync(userId: string) {
     }
     useStore.getState().applyRemote(changes);
 
-    // Record what was pulled as what the server has, read back through the same snapshot as a push.
+    // Record what the account holds. This is a fact about the account, not
+    // about this device: it holds whether or not the shelf took the rows.
     const { entities } = snapshot();
+    const settled: ShelfRows = { articles: [], highlights: [], glosses: [], briefs: [], progress: [] };
     for (const c of COLLECTIONS) {
       for (const r of changes[c] ?? []) {
         const e = entities[c].get(r.id);
-        if (r.deleted) delete base.seen[c][r.id];
-        else if (e) base.seen[c][r.id] = [e.key, e.articleId];
+        if (r.deleted) {
+          delete base.seen[c][r.id];
+          // The account has already let this one go, so this device has
+          // nothing left to tell it about.
+          settled[c].push({ id: r.id, articleId: r.articleId });
+        } else if (e) base.seen[c][r.id] = [e.key, e.articleId];
       }
     }
-    base.since = now;
+    // The shelf must reach the disk before the cursor moves over these rows.
+    //
+    // The baseline and the shelf are two keys in one storage, and they are
+    // not written at the same moment. If the cursor moves first and the page
+    // closes before the shelf lands, this device asks for rows it already
+    // has and never gets them again — while the rows it does have, it may
+    // not have. So the shelf goes down first, and the cursor only moves over
+    // what is already there.
+    //
+    // When the shelf will not fit, the cursor stays where it was: these rows
+    // are fetched again later, rather than being lost between the account
+    // and the device.
+    //
+    // `settled` rides along with the write, and must: a row the account
+    // deleted left this shelf for the account's reason, so the write would
+    // otherwise see it as a row that vanished and blame the reader for it.
+    // Naming it here keeps it out of the ledger, and out of the next push.
+    if (persistShelf({ settled, force: true })) base.since = now;
     save();
   }
 
@@ -297,10 +367,17 @@ export function startSync(userId: string) {
   lastPull = Date.now();
   sync();
 
+  // The shelf may no longer fit here — from an earlier session, or from this
+  // one. Either way, deletions are held back until it fits again.
+  const offOverflow = onLocalStorageFull((full) => {
+    if (!full) serial(push);
+  });
+
   return {
     stop() {
       stopped = true;
       unsubscribe();
+      offOverflow();
       if (timer) clearTimeout(timer);
       clearInterval(ticker);
       poke = null;

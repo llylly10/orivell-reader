@@ -100,12 +100,32 @@ export type RemoteChanges = {
   progress?: RemoteRow<Progress>[];
 };
 
+/**
+ * The five parts of the shelf, named the way the sync names them.
+ *
+ * The shelf keeps them under different names — a library, and four maps — but
+ * the sync talks about rows in five collections. This is the bridge between
+ * the two.
+ */
+export const SHELF_PARTS = ["articles", "highlights", "glosses", "briefs", "progress"] as const;
+export type ShelfPart = (typeof SHELF_PARTS)[number];
+
 type Persisted = {
   glosses: Record<string, Gloss[]>;
   highlights: Record<string, Highlight[]>;
   briefs: Record<string, BriefState>;
   progress: Record<string, Progress>;
   library: LibraryItem[];
+  /**
+   * Rows the reader took off the shelf, and that the account has not been told.
+   *
+   * It lives in the shelf rather than in the sync baseline, and it goes down
+   * in the same write, so the two can never disagree about what happened
+   * here. That matters: the account is only allowed to forget a row this
+   * device actually removed from its own shelf. A shelf that was lost, or that
+   * could not be written, must not take the account's copy away with it.
+   */
+  removals?: ShelfRows;
 };
 
 type UI = {
@@ -156,6 +176,279 @@ const DOC_PREFIX = "gloss:doc:";
 
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
+/* ---------- is the shelf still fitting on this device? ---------- */
+
+/**
+ * Whether the shelf can be written to this browser's storage.
+ *
+ * A shelf of a few thousand texts can outgrow what a browser will keep. When
+ * that happens the write fails, and the next time the page opens the local
+ * copy looks empty. The sync must then not treat what is missing as
+ * something the reader deleted — that would wipe the account's copy of every
+ * text. So the store reports the overflow, and the sync holds back.
+ *
+ * The flag outlives the page, because the page that discovers the overflow is
+ * often not the page that would push the deletions.
+ */
+let localStorageFull = false;
+const overflowListeners = new Set<(full: boolean) => void>();
+
+/** The flag outlives the page: a reader who refreshes must still be known. */
+const OVERFLOW_KEY = "gloss:overflow";
+
+/**
+ * Whether what the shelf holds on disk is behind what the app is showing.
+ *
+ * The sync needs this: a row that is only in memory has not been stored, and
+ * a claim about the account that this device cannot back is a deletion the
+ * reader never made.
+ */
+let shelfDirty = true;
+
+/** The pending debounced write, so a direct write can take its place. */
+let shelfTimer: ReturnType<typeof setTimeout> | null = null;
+
+/* ---------- what the reader took off the shelf ---------- */
+
+/**
+ * The rows of the shelf, named the way the sync names them.
+ *
+ * The shelf keeps them under different names — a library and four maps — but
+ * the sync speaks of rows in five collections. This is the bridge.
+ */
+export const SHELF_COLLECTIONS = ["articles", "highlights", "glosses", "briefs", "progress"] as const;
+export type ShelfCollection = (typeof SHELF_COLLECTIONS)[number];
+
+/** A row of the shelf: what it is, and the text it belongs to. */
+export type ShelfRow = { id: string; articleId: string };
+export type ShelfRows = Record<ShelfCollection, ShelfRow[]>;
+
+const emptyRows = (): ShelfRows => ({ articles: [], highlights: [], glosses: [], briefs: [], progress: [] });
+
+/**
+ * Rows the reader took off the shelf, and that the account has not been told.
+ *
+ * A removal is recorded here only when a write to disk witnessed it: the row
+ * was on the shelf, and it is not any more. Nothing else counts. A row the
+ * account has but this device never stored is not a deletion at all — it is a
+ * shelf that outgrew the browser — and tombstoning it would take the
+ * account's copy away over a limit the reader never crossed.
+ *
+ * It is kept with the shelf, so it goes down in the same breath as the shelf
+ * itself: the two can never disagree about what happened here. A row that is
+ * on the shelf again is not in here either — the reader brought it back, so
+ * there is nothing left to tell the account.
+ */
+let removals: ShelfRows = emptyRows();
+
+/** The rows a shelf holds, by collection. */
+function shelfRows(d: {
+  library: LibraryItem[];
+  highlights: Record<string, Highlight[]>;
+  glosses: Record<string, Gloss[]>;
+  briefs: Record<string, BriefState>;
+  progress: Record<string, Progress>;
+}): ShelfRows {
+  const rows = emptyRows();
+  for (const item of d.library) rows.articles.push({ id: item.id, articleId: item.id });
+  for (const [aid, list] of Object.entries(d.highlights)) for (const h of list) rows.highlights.push({ id: h.id, articleId: aid });
+  for (const [aid, list] of Object.entries(d.glosses)) for (const g of list) rows.glosses.push({ id: g.id, articleId: aid });
+  for (const aid of Object.keys(d.briefs)) rows.briefs.push({ id: aid, articleId: aid });
+  for (const aid of Object.keys(d.progress)) rows.progress.push({ id: aid, articleId: aid });
+  return rows;
+}
+
+/** What is on disk, and what the account has already been told. */
+function readShelf(): { rows: ShelfRows; removals: ShelfRows } {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return { rows: emptyRows(), removals: emptyRows() };
+    const d = JSON.parse(raw) as Partial<Persisted>;
+    // A brief that was never finished is not part of the shelf. It is dropped
+    // when the shelf is read back, so counting it here as a row that left
+    // would blame the reader for a brief the app threw away.
+    const briefs: Record<string, BriefState> = {};
+    for (const [aid, b] of Object.entries(d.briefs ?? {})) if (b.status === "ready") briefs[aid] = b;
+    return {
+      rows: shelfRows({
+        library: d.library ?? [],
+        highlights: d.highlights ?? {},
+        glosses: d.glosses ?? {},
+        briefs,
+        progress: d.progress ?? {},
+      }),
+      removals: d.removals ?? emptyRows(),
+    };
+  } catch {
+    return { rows: emptyRows(), removals: emptyRows() };
+  }
+}
+
+/** The ids of these rows, by collection. */
+function idSets(rows: ShelfRows): Record<ShelfCollection, Set<string>> {
+  const out: Record<ShelfCollection, Set<string>> = {
+    articles: new Set(),
+    highlights: new Set(),
+    glosses: new Set(),
+    briefs: new Set(),
+    progress: new Set(),
+  };
+  for (const c of SHELF_COLLECTIONS) for (const r of rows[c]) out[c].add(r.id);
+  return out;
+}
+
+/** Whether any of these rows is in the list. */
+function hasRows(rows: ShelfRows): boolean {
+  return SHELF_COLLECTIONS.some((c) => rows[c].length > 0);
+}
+
+/** The rows of `rows` that are not in `drop`. */
+function withoutRows(rows: ShelfRows, drop: Record<ShelfCollection, Set<string>>): ShelfRows {
+  const out = emptyRows();
+  for (const c of SHELF_COLLECTIONS) out[c] = rows[c].filter((r) => !drop[c].has(r.id));
+  return out;
+}
+
+/**
+ * Write the shelf and the ledger of removals to storage, and say whether it
+ * fit.
+ *
+ * The ledger is part of the shelf payload, so the two can never disagree
+ * about what happened here. That is the whole point of keeping it here: a
+ * removal the reader made must not be lost because the account has not been
+ * told yet, and it must not be recorded because the account has been told.
+ *
+ * `settled` names rows that left the shelf for a reason the account already
+ * knows — a deletion that arrived from another device. They are not the
+ * reader's removals, so they are neither counted as such nor kept in the
+ * ledger.
+ *
+ * `force` writes even when the shelf itself has not changed, which is needed
+ * when only the ledger changed.
+ */
+export function persistShelf(opts: { settled?: ShelfRows; force?: boolean } = {}): boolean {
+  const st = useStore.getState();
+  // Before the shelf has been read back, there is nothing here worth writing,
+  // and writing would replace what is on disk with an empty shelf.
+  if (!st.hydrated) return false;
+  if (!shelfDirty && !opts.force && !hasRows(opts.settled ?? emptyRows())) return true;
+  const { glosses, highlights, briefs, progress, library } = st;
+  const disk = readShelf();
+  const now = shelfRows({ library, highlights, glosses, briefs, progress });
+  const settled = opts.settled ? idSets(opts.settled) : null;
+  // What left the shelf between the last write and this one.
+  //
+  // A row the account itself deleted is not in here: it left for the
+  // account's reason, and the account already knows.
+  const gone: ShelfRows = emptyRows();
+  for (const c of SHELF_COLLECTIONS) {
+    const here = new Set(now[c].map((r) => r.id));
+    gone[c] = disk.rows[c].filter((r) => !here.has(r.id) && !settled?.[c].has(r.id));
+  }
+  // A row that is on the shelf again is not waiting to be told about: the
+  // reader brought it back — by adding it once more, or by a pull that
+  // delivered the account's copy before this device's removal reached it.
+  // Either way there is nothing to tell the account, so the ledger holds
+  // exactly the rows that are absent and were taken off by the reader.
+  const merged = withoutRows(withoutRows(mergeRows(removals, gone), settled ?? idSets(emptyRows())), idSets(now));
+  try {
+    localStorage.setItem(KEY, JSON.stringify({ glosses, highlights, briefs, progress, library, removals: merged }));
+    setLocalStorageFull(false);
+    shelfDirty = false;
+    if (shelfTimer) {
+      clearTimeout(shelfTimer);
+      shelfTimer = null;
+    }
+    removals = merged;
+    return true;
+  } catch {
+    setLocalStorageFull(true);
+    return false;
+  }
+}
+
+/** The rows the reader took off the shelf, and that the account has not been told. */
+export function pendingRemovals(): ShelfRows {
+  return { articles: [...removals.articles], highlights: [...removals.highlights], glosses: [...removals.glosses], briefs: [...removals.briefs], progress: [...removals.progress] };
+}
+
+/**
+ * Whether the reader took this row off the shelf and the account has not been
+ * told yet.
+ *
+ * The sync's pull asks for rows with a thirty second overlap, so a row the
+ * reader just removed is delivered again and again until the tombstone that
+ * tells the account about it has gone out. What arrives is the account's copy
+ * from before the removal, and putting it back on the shelf would undo the
+ * removal — the book would reappear a second after the reader closed it, and
+ * the next write would see it back and stop counting it as a removal at all.
+ */
+function pendingRemoval(c: ShelfCollection, id: string): boolean {
+  return removals[c].some((r) => r.id === id);
+}
+
+/** The account has been told about these rows; it need not be told again. */
+export function forgetRemovals(rows: ShelfRows) {
+  let changed = false;
+  for (const c of SHELF_COLLECTIONS) {
+    const drop = new Set(rows[c].map((r) => r.id));
+    if (!drop.size) continue;
+    const kept = removals[c].filter((r) => !drop.has(r.id));
+    if (kept.length !== removals[c].length) {
+      removals[c] = kept;
+      changed = true;
+    }
+  }
+  // Forced, because the ledger can change on its own: the account has been
+  // told about these rows while the shelf itself has not moved.
+  if (changed) persistShelf({ force: true });
+}
+
+/** Two ledgers joined, each row once: a row removed twice is one removal. */
+function mergeRows(a: ShelfRows, b: ShelfRows): ShelfRows {
+  const out = emptyRows();
+  for (const c of SHELF_COLLECTIONS) {
+    const seen = new Set(a[c].map((r) => r.id));
+    out[c] = [...a[c]];
+    for (const r of b[c]) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      out[c].push(r);
+    }
+  }
+  return out;
+}
+
+export function setLocalStorageFull(full: boolean) {
+  if (localStorageFull === full) return;
+  localStorageFull = full;
+  try {
+    if (full) localStorage.setItem(OVERFLOW_KEY, "1");
+    else localStorage.removeItem(OVERFLOW_KEY);
+  } catch {}
+  for (const fn of overflowListeners) fn(full);
+}
+
+/** Whether the shelf is known not to fit here. */
+export const isLocalStorageFull = () => {
+  if (localStorageFull) return true;
+  try {
+    if (localStorage.getItem(OVERFLOW_KEY) === "1") {
+      localStorageFull = true;
+      return true;
+    }
+  } catch {}
+  return false;
+};
+
+/** Called when the store finds the shelf no longer fits. */
+export function onLocalStorageFull(fn: (full: boolean) => void): () => void {
+  overflowListeners.add(fn);
+  return () => {
+    overflowListeners.delete(fn);
+  };
+}
+
 export const useStore = create<State>((set, get) => ({
   glosses: {},
   highlights: {},
@@ -185,6 +478,10 @@ export const useStore = create<State>((set, get) => ({
       data = JSON.parse(localStorage.getItem(KEY) || "{}");
       settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
     } catch {}
+    // Deletions the reader made but the account has not been told about yet.
+    // They are part of the shelf, so they are read back with it: a refresh
+    // must not lose the fact that a text was taken off the shelf.
+    removals = data.removals ?? emptyRows();
     // A reload mid-answer leaves a dangling stream: mark it, never spin forever.
     const glosses = data.glosses ?? {};
     for (const list of Object.values(glosses)) {
@@ -330,17 +627,18 @@ export const useStore = create<State>((set, get) => ({
   },
 
   // Changes from another device. The server's copy replaces the local one,
-  // except a gloss that is still being written here.
+  // except a gloss that is still being written here, and except a row the
+  // reader took off this shelf that the account has not been told about yet.
   applyRemote: (c) =>
     set((st) => {
       let library = st.library;
       for (const r of c.articles ?? []) {
         library = library.filter((x) => x.id !== r.id);
-        if (r.deleted || !r.data) void dropDoc(r.id);
+        if (r.deleted || !r.data || pendingRemoval("articles", r.id)) void dropDoc(r.id);
         else library = [r.data, ...library];
       }
 
-      const merge = <T extends { id: string; createdAt: number }>(cur: Record<string, T[]>, rows: RemoteRow<T>[] = [], keep?: (t: T) => boolean) => {
+      const merge = <T extends { id: string; createdAt: number }>(col: ShelfCollection, cur: Record<string, T[]>, rows: RemoteRow<T>[] = [], keep?: (t: T) => boolean) => {
         if (!rows.length) return cur;
         const next = { ...cur };
         for (const r of rows) {
@@ -348,16 +646,16 @@ export const useStore = create<State>((set, get) => ({
           const local = list.find((x) => x.id === r.id);
           if (local && keep?.(local)) continue;
           next[r.articleId] = list.filter((x) => x.id !== r.id);
-          if (!r.deleted && r.data) next[r.articleId] = [...next[r.articleId], r.data].sort((a, b) => a.createdAt - b.createdAt);
+          if (!r.deleted && r.data && !pendingRemoval(col, r.id)) next[r.articleId] = [...next[r.articleId], r.data].sort((a, b) => a.createdAt - b.createdAt);
         }
         return next;
       };
 
-      const byArticle = <T,>(cur: Record<string, T>, rows: RemoteRow<T>[] = []) => {
+      const byArticle = <T,>(col: ShelfCollection, cur: Record<string, T>, rows: RemoteRow<T>[] = []) => {
         if (!rows.length) return cur;
         const next = { ...cur };
         for (const r of rows) {
-          if (r.deleted || !r.data) delete next[r.id];
+          if (r.deleted || !r.data || pendingRemoval(col, r.id)) delete next[r.id];
           else next[r.id] = r.data;
         }
         return next;
@@ -365,10 +663,10 @@ export const useStore = create<State>((set, get) => ({
 
       return {
         library,
-        highlights: merge(st.highlights, c.highlights),
-        glosses: merge(st.glosses, c.glosses, (g) => g.turns.some((t) => t.streaming)),
-        briefs: byArticle(st.briefs, c.briefs),
-        progress: byArticle(st.progress, c.progress),
+        highlights: merge("highlights", st.highlights, c.highlights),
+        glosses: merge("glosses", st.glosses, c.glosses, (g) => g.turns.some((t) => t.streaming)),
+        briefs: byArticle("briefs", st.briefs, c.briefs),
+        progress: byArticle("progress", st.progress, c.progress),
       };
     }),
 }));
@@ -376,7 +674,6 @@ export const useStore = create<State>((set, get) => ({
 /* Debounced persistence. Streaming updates land many times a second, so the
    write waits for a pause rather than serializing on every token. */
 if (typeof window !== "undefined") {
-  let t: ReturnType<typeof setTimeout> | null = null;
   useStore.subscribe((st, prev) => {
     if (!st.hydrated) return;
     if (
@@ -387,13 +684,11 @@ if (typeof window !== "undefined") {
       st.library === prev.library
     )
       return;
-    if (t) clearTimeout(t);
-    t = setTimeout(() => {
-      const { glosses, highlights, briefs, progress, library } = useStore.getState();
-      try {
-        localStorage.setItem(KEY, JSON.stringify({ glosses, highlights, briefs, progress, library }));
-      } catch {}
-    }, 400);
+    // The shelf on disk is now behind what the app shows. The sync asks
+    // about this before it believes the local copy.
+    shelfDirty = true;
+    if (shelfTimer) clearTimeout(shelfTimer);
+    shelfTimer = setTimeout(persistShelf, 400);
   });
 }
 

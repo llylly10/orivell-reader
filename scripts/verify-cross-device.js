@@ -24,6 +24,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const ENV = fs.readFileSync(path.join(__dirname, "..", ".env.local"), "utf8");
 const SECRET = ENV.split("\n").find((l) => l.startsWith("CLERK_SECRET_KEY=")).split("=")[1].trim();
+const DBURL = (ENV.match(/^DATABASE_URL=(.*)$/m) || [])[1]?.trim() || "";
 
 function bapi(method, p, body) {
   return new Promise((res, rej) => {
@@ -190,6 +191,19 @@ async function makeDevice(browser, user, ticket, testingToken) {
   } finally {
     await bapi("DELETE", `/v1/users/${u.id}`);
     await browser.close();
+    // 测试用户库里的行一并删掉，不给数据库留残留
+    if (DBURL) {
+      try {
+        const { neon } = require("@neondatabase/serverless");
+        const sql = neon(DBURL);
+        for (const t of ["articles", "highlights", "glosses", "briefs", "progress"]) {
+          await sql.query(`delete from ${t} where user_id = $1`, [u.id]);
+        }
+        console.log("  测试行已清理");
+      } catch (e) {
+        console.log(`  测试行没清成：${e.message}`);
+      }
+    }
   }
 
   console.log(JSON.stringify(report, null, 2));

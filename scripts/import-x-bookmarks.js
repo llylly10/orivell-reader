@@ -148,4 +148,26 @@ if (prog.length) {
 
 const check = await sql().query("select count(*)::int as n from articles where user_id = $1", [userId]);
 console.log(`  库里现在有 ${check[0].n} 篇文章（这个账号）`);
+
+// 自检：每一篇都该有正文、都不该是墓碑。
+// 有一台设备如果本地存不下这批数据，会把它们当成「本地删了」推回服务器，
+// 于是库里的行变成墓碑（data 为空、deleted 为 true）。导入后立刻查一遍，
+// 早发现比过几天才发现强。
+const audit = await sql().query(
+  `select count(*)::int as n,
+          count(doc)::int as with_doc,
+          count(*) filter (where deleted)::int as deleted,
+          count(*) filter (where data::text = '{}')::int as empty
+   from articles where user_id = $1`,
+  [userId]
+);
+const a = audit[0];
+if (a.n === items.length && a.with_doc === items.length && a.deleted === 0) {
+  console.log(`  ✅ 全部 ${a.n} 篇都带正文，没有被覆盖`);
+} else {
+  console.log(`  ⚠️  有异常：共 ${a.n} 篇，带正文 ${a.with_doc} 篇，墓碑 ${a.deleted} 篇，空 ${a.empty} 篇`);
+  console.log("     （有设备本地存不下这批数据，把它们当成删除推了回来。");
+  console.log("      重新跑一次这个脚本即可恢复：on conflict 会把 deleted 改回 false 并补上正文。）");
+}
+
 console.log("\n  完事。打开书架应该就能看到你的 X 书签了。\n");

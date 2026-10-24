@@ -21,6 +21,8 @@ export type Block = {
   head?: boolean;
   /** The PDF page it came from, so one page can be read again and swapped in alone. */
   page?: number;
+  /** A quote block that knows which post it quotes gets a link back to it. */
+  quoteUrl?: string;
 };
 
 export type Article = {

@@ -439,11 +439,27 @@ kbd,
   margin: 1.6em 0 0.5em;
 }
 
+/* Quoted posts (X quote tweets and article quotes) render as a card, X-embed style:
+   bordered, raised, with a link back to the original post in the corner. */
 .prose-read .blk[data-type="quote"] {
-  padding-left: 1.1em;
-  border-left: 2px solid var(--rule-strong);
+  position: relative;
+  margin: 1.2em 0;
+  padding: 0.85em 2.1em 0.85em 1.1em;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--bg-raised);
   color: var(--ink-2);
-  font-style: italic;
+}
+
+.prose-read .blk[data-type="quote"] .quote-link {
+  position: absolute;
+  top: 0.5em;
+  right: 0.55em;
+  color: var(--ink-3);
+}
+
+.prose-read .blk[data-type="quote"] .quote-link:hover {
+  color: var(--ink);
 }
 
 .prose-read .blk[data-type="li"] {

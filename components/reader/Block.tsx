@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useState, type ReactNode } from "react";
-import { MessageCirclePlus } from "lucide-react";
+import { ArrowUpRight, MessageCirclePlus } from "lucide-react";
 import type { Block as BlockT, Run } from "@/lib/article";
 import { useT } from "@/lib/lang-context";
 
@@ -236,6 +236,11 @@ function BlockImpl({ block, n, first, marks, activeGloss, hoverGloss, activeHigh
         block.runs.length > 0 && <figcaption className="blk-text">{content}</figcaption>
       ) : (
         <span className="blk-text">{content}</span>
+      )}
+      {block.type === "quote" && block.quoteUrl && (
+        <a className="quote-link" href={block.quoteUrl} target="_blank" rel="noopener noreferrer" aria-label={t("quote.open")}>
+          <ArrowUpRight size={13} />
+        </a>
       )}
     </Tag>
   );

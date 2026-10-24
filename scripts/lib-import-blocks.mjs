@@ -83,7 +83,15 @@ export function toBlocks(markdown) {
         const t = buf.join(" ").trim();
         buf = [];
         if (!t) return;
-        blocks.push({ id: id(), type: quoted ? "quote" : "p", runs: inlineRuns(t) });
+        const runs = inlineRuns(t);
+        const block = { id: id(), type: quoted ? "quote" : "p", runs };
+        // 引用头里的原推链接（引用 [@handle](https://x.com/i/status/…)）提成 quoteUrl，
+        // 阅读器据此在引用卡上放一个跳到原推的入口。
+        if (quoted) {
+          const qlink = runs.find((r) => r.href && /x\.com\/i\/status\//.test(r.href));
+          if (qlink) block.quoteUrl = qlink.href;
+        }
+        blocks.push(block);
       };
       for (const line of chunk.split("\n")) {
         const isQ = /^>\s?/.test(line);
@@ -104,6 +112,15 @@ export function toBlocks(markdown) {
           flush();
           inCode = true;
           buf.push(text2);
+          continue;
+        }
+
+        // 引用里夹的独立图片/视频行（被引用推文的媒体）：单独成 figure，
+        // 紧跟在引用文字后面，不混进引用的正文里。
+        const solo = text2.trim().match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+        if (solo) {
+          flush();
+          blocks.push({ id: id(), type: "figure", runs: solo[1] ? [{ text: solo[1] }] : [], src: solo[2], alt: solo[1] || "" });
           continue;
         }
 

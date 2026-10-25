@@ -401,6 +401,74 @@ function VisionOcr() {
   );
 }
 
+/** 重复项审查：列出候选组，人工决定保留哪篇（绝不自动删）。 */
+function Duplicates() {
+  const t = useT();
+  const [groups, setGroups] = useState<{ kind: string; items: { id: string; title: string; url: string; addedAt: number }[] }[] | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [keep, setKeep] = useState<Record<string, string>>({});
+  const [err, setErr] = useState<string | null>(null);
+
+  const scan = () => {
+    setScanning(true);
+    setErr(null);
+    fetch("/api/duplicates")
+      .then((r) => r.json())
+      .then((j) => {
+        setGroups(j.groups ?? []);
+        const init: Record<string, string> = {};
+        for (const g of j.groups ?? []) if (g.items?.length) init[g.items[0].id] = g.items[0].id;
+        setKeep(init);
+      })
+      .catch(() => setErr(t("dup.failed")))
+      .finally(() => setScanning(false));
+  };
+
+  const merge = async (g: { items: { id: string }[] }) => {
+    const keeper = keep[g.items[0].id] ?? g.items[0].id;
+    const drop = g.items.map((i) => i.id).filter((id) => id !== keeper);
+    setErr(null);
+    try {
+      const r = await fetch("/api/duplicates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keep: keeper, drop }) });
+      const j = await r.json();
+      if (!j.ok) setErr(j.error ?? t("dup.failed"));
+      else setGroups((gs) => (gs ?? []).filter((x) => x !== g));
+    } catch {
+      setErr(t("dup.failed"));
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[13px] font-medium text-ink">{t("dup.title")}</span>
+        <button type="button" onClick={scan} disabled={scanning} className="rounded-full border border-rule px-3 py-1 text-[12px] text-ink transition-colors hover:border-ink-3 hover:bg-[var(--bg-raised)] disabled:opacity-40">
+          {scanning ? t("common.loading") : t("dup.scan")}
+        </button>
+      </div>
+      {err && <p className="text-[12px] text-[#c0392b]">{err}</p>}
+      {groups && !groups.length && <p className="text-[12px] text-ink-3">{t("dup.none")}</p>}
+      {groups?.map((g, gi) => (
+        <div key={gi} className="space-y-1.5 rounded-[10px] border border-rule p-2.5">
+          <p className="text-[11px] text-ink-3">{t(g.kind === "url" ? "dup.kindUrl" : g.kind === "text" ? "dup.kindText" : "dup.kindTitle")}</p>
+          {g.items.map((it) => (
+            <label key={it.id} className="flex items-start gap-2 text-[12px] leading-snug text-ink-2">
+              <input type="radio" name={`dup-${gi}`} checked={(keep[g.items[0].id] ?? g.items[0].id) === it.id} onChange={() => setKeep((k) => ({ ...k, [g.items[0].id]: it.id }))} className="mt-1 accent-[var(--rubric)]" />
+              <span className="min-w-0">
+                <span className="block truncate">{it.title || it.url}</span>
+                <span className="block truncate text-[11px] text-ink-4">{it.url}</span>
+              </span>
+            </label>
+          ))}
+          <button type="button" onClick={() => merge(g)} className="rounded-full border border-rule px-3 py-1 text-[12px] text-ink transition-colors hover:border-ink-3 hover:bg-[var(--bg-raised)]">
+            {t("dup.merge")}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function SettingsMenu({ compact = false }: { compact?: boolean }) {
   const settings = useStore((s) => s.settings);
   const setSettings = useStore((s) => s.setSettings);
@@ -690,6 +758,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
               <XSync />
               <CnAccounts />
               <VisionOcr />
+              <Duplicates />
             </div>
           )}
         </div>

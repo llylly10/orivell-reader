@@ -129,7 +129,7 @@ const en = {
   "dev.reading": "{n} in progress",
   "dev.highlights": "{n} highlights",
   "lib.paintedCovers": "Painted covers",
-  "lib.paintedCoversHint": "A picture for each text in your library, about 2¢ each.",
+  "lib.paintedCoversHint": "A picture for each text in your library, drawn by your configured image provider.",
 
   /* theme names */
   "theme.auto": "Auto",
@@ -736,7 +736,7 @@ const zh: Partial<Dict> = {
   "dev.reading": "{n} 篇在读",
   "dev.highlights": "{n} 处高亮",
   "lib.paintedCovers": "绘制封面",
-  "lib.paintedCoversHint": "书架里每篇文章配一张图，每张约 2 美分。",
+  "lib.paintedCoversHint": "书架里每篇文章配一张图，由你配置的图像服务绘制。",
 
   "theme.auto": "自动",
   "theme.paper": "纸白",

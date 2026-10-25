@@ -132,3 +132,25 @@ create table if not exists dup_verdicts (
 -- from the extractor) is seed data for a future alias-resolution pass.
 alter table entities add column if not exists display text;
 alter table entities add column if not exists aliases text;
+
+-- Semantic index: one embedding per article (title + opening text), from the
+-- reader's own OpenAI-compatible /embeddings endpoint. 1024 dims — the default
+-- of Bailian's text-embedding-v3; other providers need a 1024-dim model
+-- (or set AI_EMBED_MODEL). The corpus mean lives in embed_mean: relatedness is
+-- measured on mean-centred vectors, or everything looks 0.85-similar.
+create extension if not exists vector;
+
+create table if not exists embeddings (
+  user_id text not null,
+  article_id text not null,
+  model text not null default '',
+  embedding vector(1024) not null,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, article_id)
+);
+
+create table if not exists embed_mean (
+  user_id text primary key,
+  mean vector(1024) not null,
+  n int not null default 0
+);

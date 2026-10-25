@@ -151,6 +151,40 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     );
   }
 
+  // 语义关联（pgvector + 均值中心化）：与确定性信号混合排序——不是替代，是补位
+  try {
+    const emb = await db()`select embedding from embeddings where user_id = ${userId} and article_id = ${id}`;
+    const meanRow = await db()`select mean from embed_mean where user_id = ${userId}`;
+    if (emb[0] && meanRow[0]) {
+      const parse = (s: unknown) => String(s ?? "").replace(/[\[\]]/g, "").split(",").map(Number);
+      const selfV = parse(emb[0].embedding);
+      const meanV = parse(meanRow[0].mean);
+      if (selfV.length === meanV.length && selfV.length) {
+        const centered = selfV.map((x, i) => x - meanV[i]);
+        const centeredStr = `[${centered.map((x) => x.toFixed(6)).join(",")}]`;
+        const meanStr = `[${meanV.map((x) => x.toFixed(6)).join(",")}]`;
+        const sims = await db()`
+          select a.article_id as id, a.data->>'title' as t, a.data->>'sourceUrl' as u,
+                 a.data->>'author' as au, a.data->>'source' as s,
+                 ((e.embedding - ${meanStr}::vector) <=> (${centeredStr}::vector)) as dist
+          from embeddings e join articles a on a.user_id = e.user_id and a.article_id = e.article_id
+          where e.user_id = ${userId} and e.article_id <> ${id} and a.deleted = false
+          order by dist
+          limit 30`;
+        for (const r of sims) {
+          const sim = 1 - Number(r.dist);
+          if (sim < 0.35) continue; // 中心化后无关 ≈ 0；只收真相关的
+          add(
+            { id: String(r.id), title: String(r.t ?? ""), url: String(r.u ?? ""), author: String(r.au ?? ""), source: String(r.s ?? ""), reason: "语义相关", score: Math.min(45, sim * 60) },
+            Math.min(45, sim * 60),
+          );
+        }
+      }
+    }
+  } catch {
+    // 语义层是锦上添花——数据库没开 vector 扩展等情况下一律静默跳过
+  }
+
   const related = [...scored.values()]
     .filter((r) => r.title || r.url)
     .sort((x, y) => y.score - x.score)

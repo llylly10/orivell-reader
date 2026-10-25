@@ -401,6 +401,75 @@ function VisionOcr() {
   );
 }
 
+/** 语义索引：把书库嵌入向量（读者自己的服务），关联侧栏多一层语义信号。 */
+function SemanticIndex() {
+  const t = useT();
+  const [st, setSt] = useState<{ done?: number; total?: number; model?: string } | null>(null);
+  const [running, setRunning] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const refresh = () => {
+    fetch("/api/embed")
+      .then((r) => r.json())
+      .then((j) => setSt(j.ok ? j : { done: 0, total: 0 }))
+      .catch(() => setSt({ done: 0, total: 0 }));
+  };
+  useEffect(refresh, []);
+
+  const run = async () => {
+    if (running) return;
+    setRunning(true);
+    setMsg(null);
+    try {
+      const { readAiBase, readApiKey } = await import("@/lib/ask");
+      for (let i = 0; i < 200; i++) {
+        const r = await fetch("/api/embed", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ baseUrl: readAiBase() || undefined, apiKey: readApiKey() || undefined }),
+          signal: AbortSignal.timeout(120_000),
+        });
+        const j = await r.json();
+        if (!r.ok || !j.ok) {
+          setMsg(j.error ?? t("sem.failed"));
+          return;
+        }
+        setSt((s) => ({ ...s, done: j.done, total: j.total }));
+        setMsg(t("sem.progress", { done: String(j.done), total: String(j.total) }));
+        if (!j.embedded || j.done >= j.total) break;
+      }
+    } catch {
+      setMsg(t("sem.failed"));
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const pct = st?.total ? Math.round(((st.done ?? 0) / st.total) * 100) : 0;
+  return (
+    <div className="rounded-[10px] border border-rule p-2.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[13px] font-medium text-ink">{t("sem.title")}</span>
+        <button type="button" onClick={run} disabled={running} className="rounded-full border border-rule px-3 py-1 text-[12px] text-ink transition-colors hover:border-ink-3 hover:bg-[var(--bg-raised)] disabled:opacity-40">
+          {running ? t("sem.running") : pct >= 100 ? t("sem.done") : t("sem.build")}
+        </button>
+      </div>
+      {st?.total ? (
+        <div className="mt-2">
+          <div className="flex items-baseline justify-between text-[11.5px] text-ink-3">
+            <span>{st.model}</span>
+            <span className="tabular-nums">{st.done}/{st.total}</span>
+          </div>
+          <span className="mt-1 block h-[3px] overflow-hidden rounded-full bg-rule" aria-hidden>
+            <span className="block h-full rounded-full bg-[var(--rubric)] transition-[width] duration-500" style={{ width: `${pct}%` }} />
+          </span>
+        </div>
+      ) : null}
+      {msg && <p className="mt-2 text-[11.5px] leading-snug text-ink-3">{msg}</p>}
+    </div>
+  );
+}
+
 /** 重复项审查：列出候选组（含模糊变体），LLM 判定辅助，人工决定保留哪篇。 */
 function Duplicates() {
   const t = useT();
@@ -815,6 +884,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
           {tab === "cn" && (
             <div className="space-y-4">
               <XSync />
+              <SemanticIndex />
               <CnAccounts />
               <VisionOcr />
               <Duplicates />

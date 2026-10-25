@@ -125,13 +125,27 @@ export function computeLayout(nodes: SimNode[], edges: GraphEdge[], tick = 220, 
   return { adj, byId };
 }
 
+export const COMMUNITY_PALETTE = ["#7d9a6f", "#b3543e", "#5f7d9a", "#a9843f", "#8a6f9e", "#4f9a92", "#c07a3f", "#6f8a4f", "#9a5f7d", "#5a7050"];
+
 export function drawGraph(
   ctx: CanvasRenderingContext2D,
   nodes: SimNode[],
   byId: Map<string, SimNode>,
   edges: GraphEdge[],
   adj: Map<string, { other: SimNode; k: GraphEdge["k"] }[]>,
-  opts: { width: number; height: number; scale: number; ox: number; oy: number; hovered: SimNode | null; selected: SimNode | null; colors: PlatformColors; show: { quote: boolean; author: boolean; entity: boolean } },
+  opts: {
+    width: number;
+    height: number;
+    scale: number;
+    ox: number;
+    oy: number;
+    hovered: SimNode | null;
+    selected: SimNode | null;
+    colors: PlatformColors;
+    show: { quote: boolean; author: boolean; entity: boolean };
+    /** 社群模式：给节点按社区上色（Louvain 划分），覆盖平台色 */
+    community?: Map<string, number>;
+  },
 ) {
   const { width, height, scale, ox, oy } = opts;
   ctx.save();
@@ -168,11 +182,15 @@ export function drawGraph(
     ctx.beginPath();
     ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
     if (n.k === "e") {
-      ctx.strokeStyle = "#6b7f5e";
+      ctx.strokeStyle = opts.community ? COMMUNITY_PALETTE[(opts.community.get(n.id) ?? 0) % COMMUNITY_PALETTE.length] : "#6b7f5e";
       ctx.lineWidth = 1.4;
       ctx.stroke();
     } else {
-      ctx.fillStyle = n.k === "au" ? "#5a5347" : opts.colors[n.s ?? "x"] ?? "#4a463f";
+      ctx.fillStyle = opts.community
+        ? COMMUNITY_PALETTE[(opts.community.get(n.id) ?? 0) % COMMUNITY_PALETTE.length]
+        : n.k === "au"
+          ? "#5a5347"
+          : opts.colors[n.s ?? "x"] ?? "#4a463f";
       ctx.fill();
     }
     if (n === opts.hovered || n === opts.selected) {

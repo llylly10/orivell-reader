@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { ArrowLeft, Focus, RotateCcw, Sparkles } from "lucide-react";
+import Graph from "graphology";
+import louvain from "graphology-communities-louvain";
 import { computeLayout, drawGraph, hitTest, type GraphEdge, type SimNode } from "@/components/graph/graph-engine";
 import { readAiBase, readApiKey, readModelName } from "@/lib/ask";
 import { useT } from "@/lib/lang-context";
@@ -26,6 +28,14 @@ const PLATFORM_COLORS: Record<string, string> = {
 };
 
 const SHOW_DEFAULT = { quote: true, author: true, entity: true };
+const LAYOUT_KEY = "gloss:graph-layout";
+
+/** 节点集合的指纹：一致则复用已存坐标（Obsidian 被骂最多的就是每次重排） */
+function nodesFingerprint(ids: string[]): string {
+  let h = 5381;
+  for (const id of [...ids].sort()) h = ((h * 33) ^ id.length) ^ id.charCodeAt(0);
+  return String(h);
+}
 
 export default function GraphPage() {
   const t = useT();
@@ -39,6 +49,11 @@ export default function GraphPage() {
   const [hovered, setHovered] = useState<SimNode | null>(null);
   const [selected, setSelected] = useState<SimNode | null>(null);
   const [show, setShow] = useState(SHOW_DEFAULT);
+  const [kinds, setKinds] = useState({ a: true, au: true, e: true });
+  const [minDeg, setMinDeg] = useState(1);
+  const [query, setQuery] = useState("");
+  const [egoId, setEgoId] = useState<string | null>(null);
+  const [communityMode, setCommunityMode] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [extractMsg, setExtractMsg] = useState<string | null>(null);
   const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
@@ -52,18 +67,76 @@ export default function GraphPage() {
 
   useEffect(load, [load, sig]);
 
-  // 布局：数据就绪后跑一轮力导向（带进度），收敛后静止
+  // 布局：指纹匹配则复用本地坐标（秒开），否则跑力导向
   useEffect(() => {
     if (!data?.ok || !data.nodes.length) return;
-    setProgress(0);
-    const id = requestAnimationFrame(() => {
-      const simNodes: SimNode[] = data.nodes.map((n) => ({ ...n, x: 0, y: 0, vx: 0, vy: 0, deg: 0 }));
-      const { adj, byId } = computeLayout(simNodes, data.edges, 220, (p) => setProgress(p));
+    const simNodes: SimNode[] = data.nodes.map((n) => ({ ...n, x: 0, y: 0, vx: 0, vy: 0, deg: 0 }));
+    const fp = nodesFingerprint(data.nodes.map((n) => n.id));
+    let saved: Record<string, [number, number]> | null = null;
+    try {
+      const raw = localStorage.getItem(LAYOUT_KEY);
+      if (raw) {
+        const j = JSON.parse(raw) as { fp: string; pos: Record<string, [number, number]> };
+        if (j.fp === fp) saved = j.pos;
+      }
+    } catch {}
+    if (saved) {
+      for (const n of simNodes) {
+        const p = saved[n.id];
+        if (p) {
+          n.x = p[0];
+          n.y = p[1];
+        }
+      }
+      const { adj, byId } = computeLayout(simNodes, data.edges, 0);
       setLayout({ nodes: simNodes, byId, edges: data.edges, adj });
-      setView({ scale: 0.42, ox: (wrapRef.current?.clientWidth ?? 1200) / 2 - (2400 * 0.42) / 2, oy: (wrapRef.current?.clientHeight ?? 800) / 2 - (1600 * 0.42) / 2 });
-    });
-    return () => cancelAnimationFrame(id);
+      setProgress(1);
+    } else {
+      setProgress(0);
+      const id = requestAnimationFrame(() => {
+        const { adj, byId } = computeLayout(simNodes, data.edges, 220, (p) => setProgress(p));
+        setLayout({ nodes: simNodes, byId, edges: data.edges, adj });
+        try {
+          const pos: Record<string, [number, number]> = {};
+          for (const n of simNodes) pos[n.id] = [Math.round(n.x), Math.round(n.y)];
+          localStorage.setItem(LAYOUT_KEY, JSON.stringify({ fp, pos }));
+        } catch {}
+      });
+      return () => cancelAnimationFrame(id);
+    }
+    setView({ scale: 0.42, ox: (wrapRef.current?.clientWidth ?? 1200) / 2 - (2400 * 0.42) / 2, oy: (wrapRef.current?.clientHeight ?? 800) / 2 - (1600 * 0.42) / 2 });
   }, [data]);
+
+  // 社群划分（Louvain）：边集不变时只算一次
+  const community = useMemo(() => {
+    if (!layout || !communityMode) return undefined;
+    const g = new Graph({ multi: false, type: "undirected" });
+    for (const n of layout.nodes) g.addNode(n.id);
+    for (const e of layout.edges) {
+      if (!show[e.k]) continue;
+      if (g.hasNode(e.s) && g.hasNode(e.t) && !g.hasEdge(e.s, e.t)) g.addEdge(e.s, e.t);
+    }
+    try {
+      louvain.assign(g, { resolution: 1 });
+      const m = new Map<string, number>();
+      g.forEachNode((nid, attrs) => m.set(nid, Number(attrs.community) || 0));
+      return m;
+    } catch {
+      return undefined;
+    }
+  }, [layout, communityMode, show]);
+
+  // 可见节点：类型开关 + 度数阈值 + 邻域视图 + 搜索过滤
+  const visible = useMemo(() => {
+    if (!layout) return { nodes: [] as SimNode[], edges: [] as GraphEdge[] };
+    const egoSet = egoId && layout.adj.has(egoId) ? new Set([egoId, ...layout.adj.get(egoId)!.map((x) => x.other.id)]) : null;
+    const q = query.trim().toLowerCase();
+    let nodes = layout.nodes.filter((n) => kinds[n.k] && n.deg >= minDeg && (!egoSet || egoSet.has(n.id)));
+    if (q) nodes = nodes.filter((n) => n.t.toLowerCase().includes(q));
+    const nodeIds = new Set(nodes.map((n) => n.id));
+    const edges = layout.edges.filter((e) => show[e.k] && nodeIds.has(e.s) && nodeIds.has(e.t));
+    return { nodes, edges };
+  }, [layout, kinds, minDeg, egoId, query, show]);
 
   // 绘制
   useEffect(() => {
@@ -75,7 +148,7 @@ export default function GraphPage() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-    drawGraph(ctx, layout.nodes, layout.byId, layout.edges, layout.adj, {
+    drawGraph(ctx, visible.nodes, layout.byId, visible.edges, layout.adj, {
       width: wrap.clientWidth,
       height: wrap.clientHeight,
       scale: view.scale,
@@ -85,8 +158,9 @@ export default function GraphPage() {
       selected,
       colors: PLATFORM_COLORS,
       show,
+      community,
     });
-  }, [layout, view, hovered, selected, show]);
+  }, [layout, visible, view, hovered, selected, show, community]);
 
   const toWorld = (cx: number, cy: number) => {
     const wrap = wrapRef.current;
@@ -104,9 +178,8 @@ export default function GraphPage() {
       return;
     }
     const p = toWorld(e.clientX, e.clientY);
-    setHovered(hitTest(layout.nodes, p.x, p.y, view.scale));
+    setHovered(hitTest(visible.nodes, p.x, p.y, view.scale));
   };
-
   const onDown = (e: React.MouseEvent) => {
     dragRef.current = { x: e.clientX, y: e.clientY, ox: view.ox, oy: view.oy };
   };
@@ -130,7 +203,7 @@ export default function GraphPage() {
   const onClick = (e: React.MouseEvent) => {
     if (!layout || dragRef.current) return;
     const p = toWorld(e.clientX, e.clientY);
-    setSelected(hitTest(layout.nodes, p.x, p.y, view.scale));
+    setSelected(hitTest(visible.nodes, p.x, p.y, view.scale));
   };
 
   // 实体抽取：一批 20 篇，用浏览器里的三件套调读者自己的 AI 服务
@@ -139,9 +212,6 @@ export default function GraphPage() {
     setExtracting(true);
     setExtractMsg(null);
     try {
-      const doneSet = await fetch("/api/graph/entities").then((r) => r.json());
-      void doneSet;
-      // 服务端每次取「尚未抽取」的下 20 篇——循环直到 done >= total
       for (let i = 0; i < 200; i++) {
         const r = await fetch("/api/graph/entities", {
           method: "POST",
@@ -158,7 +228,10 @@ export default function GraphPage() {
         if (j.done >= j.total) break;
       }
       setExtractMsg(t("graph.extractDone"));
-      setSig((s) => s + 1); // 重新拉图谱，实体节点上场
+      try {
+        localStorage.removeItem(LAYOUT_KEY); // 新实体节点进场，布局指纹失效
+      } catch {}
+      setSig((s) => s + 1);
     } catch {
       setExtractMsg(t("graph.extractFailed"));
     } finally {
@@ -170,10 +243,11 @@ export default function GraphPage() {
   const empty = data?.ok && !data.nodes.length;
   const counts = useMemo(() => {
     if (!layout) return null;
-    const a = layout.nodes.filter((n) => n.k === "a").length;
-    const au = layout.nodes.filter((n) => n.k === "au").length;
-    const e = layout.nodes.filter((n) => n.k === "e").length;
-    return { a, au, e };
+    return {
+      a: layout.nodes.filter((n) => n.k === "a").length,
+      au: layout.nodes.filter((n) => n.k === "au").length,
+      e: layout.nodes.filter((n) => n.k === "e").length,
+    };
   }, [layout]);
 
   const chip = (on: boolean, label: string, onClick: () => void) => (
@@ -194,9 +268,25 @@ export default function GraphPage() {
         </Link>
       </header>
       <div className="mx-5 flex flex-wrap items-center gap-2 border-t border-rule pt-3">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t("graph.searchPlaceholder")}
+          aria-label={t("graph.searchPlaceholder")}
+          className="h-8 w-44 rounded-full border border-rule bg-bg-raised px-3 text-[12.5px] text-ink outline-none placeholder:text-ink-4 focus:border-rule-strong"
+        />
         {chip(show.quote, t("graph.quote"), () => setShow((s) => ({ ...s, quote: !s.quote })))}
         {chip(show.author, t("graph.author"), () => setShow((s) => ({ ...s, author: !s.author })))}
         {chip(show.entity, t("graph.entity"), () => setShow((s) => ({ ...s, entity: !s.entity })))}
+        <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
+        {chip(kinds.au, t("graph.kindAuthor"), () => setKinds((k) => ({ ...k, au: !k.au })))}
+        {chip(kinds.e, t("graph.kindEntity"), () => setKinds((k) => ({ ...k, e: !k.e })))}
+        {chip(communityMode, t("graph.community"), () => setCommunityMode((v) => !v))}
+        <label className="flex items-center gap-1.5 text-[12px] text-ink-3">
+          {t("graph.minDegree")}
+          <input type="range" min={1} max={8} value={minDeg} onChange={(e) => setMinDeg(Number(e.target.value))} className="h-1 w-20 accent-[var(--rubric)]" aria-label={t("graph.minDegree")} />
+          <span className="tabular-nums">{minDeg}</span>
+        </label>
         <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
         <button
           type="button"
@@ -206,10 +296,16 @@ export default function GraphPage() {
         >
           <Sparkles size={12} /> {extracting ? t("graph.extracting") : t("graph.extract")}
         </button>
-        {extractMsg && <span className="text-[12px] text-ink-3">{extractMsg}</span>}
+        {extractMsg && <span className="max-w-56 truncate text-[12px] text-ink-3">{extractMsg}</span>}
+        {egoId && (
+          <button type="button" onClick={() => setEgoId(null)} className="flex items-center gap-1 rounded-full border border-rule px-3 py-1 text-[12px] text-ink-2 transition-colors hover:border-ink-3">
+            <RotateCcw size={11} /> {t("graph.resetEgo")}
+          </button>
+        )}
         {data?.ok && counts && (
           <span className="ml-auto text-[12px] tabular-nums text-ink-3">
             {t("graph.counts", { a: String(counts.a), au: String(counts.au), e: String(counts.e) })}
+            {visible.nodes.length !== (layout?.nodes.length ?? 0) ? ` · ${t("graph.showing", { n: String(visible.nodes.length) })}` : ""}
           </span>
         )}
       </div>
@@ -235,13 +331,20 @@ export default function GraphPage() {
             <p className="text-[13.5px] font-medium leading-snug text-ink">{selected.t || selected.id}</p>
             <p className="mt-1 text-[11.5px] text-ink-3">
               {selected.k === "au" ? t("graph.kindAuthor") : selected.k === "e" ? t("graph.kindEntity") : selected.s || "X"}
-              {selected.k === "e" && selected.n ? ` · ×${selected.n}` : ""}
+              {selected.k === "e" && selected.n ? ` · ×${selected.n}` : ""} · {selected.deg} {t("graph.links")}
             </p>
-            {selected.k === "a" && (
-              <Link href={`/read/${encodeURIComponent(selected.id)}`} className="mt-2.5 block rounded-lg bg-ink px-3 py-1.5 text-center text-[12.5px] font-medium text-bg">
-                {t("graph.open")}
-              </Link>
-            )}
+            <div className="mt-2.5 flex gap-1.5">
+              {selected.k === "a" && (
+                <Link href={`/read/${encodeURIComponent(selected.id)}`} className="flex-1 rounded-lg bg-ink px-3 py-1.5 text-center text-[12.5px] font-medium text-bg">
+                  {t("graph.open")}
+                </Link>
+              )}
+              {egoId !== selected.id && (
+                <button type="button" onClick={() => setEgoId(selected.id)} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-rule px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-ink-3">
+                  <Focus size={12} /> {t("graph.ego")}
+                </button>
+              )}
+            </div>
           </aside>
         )}
       </div>

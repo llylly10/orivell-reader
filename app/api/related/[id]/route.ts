@@ -78,6 +78,32 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         limit 20`
     : [];
 
+  // 相似变体（标题 trigram 重叠 ≥0.72）：微调复制的帖子——非破坏性软聚簇的信号面
+  const tri = (s: string): Set<string> => {
+    const t = new Set<string>();
+    const x = `  ${s.toLowerCase().replace(/\s+/g, " ").trim()}  `;
+    for (let i = 0; i < x.length - 2; i++) t.add(x.slice(i, i + 3));
+    return t;
+  };
+  const selfTri = tri(selfTitleKey);
+  const variants: { id: string; t: string; u: string; a: string; s: string }[] = [];
+  if (selfTitleKey.length >= 4) {
+    const allTitles = await db()`
+      select a.article_id as id, a.data->>'title' as t, a.data->>'sourceUrl' as u,
+             a.data->>'author' as a, a.data->>'source' as s
+      from articles a
+      where a.user_id = ${userId} and a.deleted = false and a.article_id <> ${id}
+        and a.data->>'title' <> '' and a.data->>'title' <> '（无正文）'`;
+    for (const r of allTitles) {
+      const other = tri(String(r.t ?? ""));
+      let inter = 0;
+      for (const g of other) if (selfTri.has(g)) inter++;
+      if (inter / Math.max(1, Math.min(selfTri.size, other.size)) >= 0.72) {
+        variants.push({ id: String(r.id), t: String(r.t ?? ""), u: String(r.u ?? ""), a: String(r.a ?? ""), s: String(r.s ?? "") });
+      }
+    }
+  }
+
   // 同作者 / 同来源
   const sameMeta = await db()`
     select a.article_id as id, a.data->>'title' as t, a.data->>'sourceUrl' as u,
@@ -98,6 +124,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   for (const r of sameTitle)
     add({ id: String(r.id), title: String(r.t ?? ""), url: String(r.u ?? ""), author: String(r.a ?? ""), source: String(r.s ?? ""), reason: "同标题", score: 50 }, 50);
+
+  for (const r of variants)
+    add({ id: r.id, title: r.t, url: r.u, author: r.a, source: r.s, reason: "相似变体", score: 40 }, 40);
 
   for (const r of sameText)
     add({ id: String(r.id), title: String(r.t ?? ""), url: String(r.u ?? ""), author: String(r.au ?? ""), source: String(r.ss ?? ""), reason: "同文", score: 100 }, 100);

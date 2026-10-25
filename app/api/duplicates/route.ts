@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 type Item = { id: string; url: string; title: string; opening: string; addedAt: number };
-type Group = { kind: "url" | "text" | "title" | "fuzzy"; items: Item[] };
+type Group = { kind: "url" | "text" | "title" | "fuzzy" | "media"; items: Item[] };
 
 /** 标题 trigram 重叠系数——模糊预筛，捞出精确匹配漏掉的微调变体 */
 function overlapCoefficient(a: Set<string>, b: Set<string>): number {
@@ -40,6 +40,7 @@ export async function GET() {
            a.data->>'title' as title,
            a.data->>'addedAt' as added,
            string_agg(coalesce(r->>'text',''), ' ') as fulltext,
+           coalesce(array_agg(distinct bb->>'src') filter (where bb->>'src' like '%twimg.com%'), '{}') as srcs,
            md5(lower(regexp_replace(string_agg(coalesce(r->>'text',''), ' '), '\\s+', ' ', 'g'))) as th
     from articles a
     left join lateral jsonb_array_elements(a.doc->'blocks') bb on true
@@ -48,14 +49,21 @@ export async function GET() {
     group by a.article_id, url, title, added
     order by added desc`;
 
-  const items: (Item & { th: string })[] = rows.map((r) => ({
+  const items: (Item & { th: string; srcs: string[] })[] = rows.map((r) => ({
     id: String(r.id),
     url: String(r.url ?? ""),
     title: String(r.title ?? ""),
     opening: String(r.fulltext ?? "").replace(/\s+/g, " ").slice(0, 160),
     addedAt: Number(r.added ?? 0),
     th: String(r.th ?? ""),
+    srcs: Array.isArray(r.srcs) ? (r.srcs as string[]) : [],
   }));
+
+  /** X 图媒体的稳定键：pbs.twimg.com/media/<key> 的 <key>（尺寸后缀剥离后同图同键） */
+  const mediaKey = (src: string): string | null => {
+    const m = /pbs\.twimg\.com\/media\/([\w-]+)/.exec(src);
+    return m?.[1] ?? null;
+  };
   const isBlank = (it: Item) => !it.title || it.title === "（无正文）";
 
   const groups: Group[] = [];
@@ -82,6 +90,19 @@ export async function GET() {
     if (k) (byTitle.get(k) ?? byTitle.set(k, []).get(k)!).push(it);
   }
   for (const g of byTitle.values()) if (g.length > 1) groups.push({ kind: "title", items: g });
+
+  // 媒体键：同一张 X 图片（键相同，尺寸/格式变体不同）被多条内容引用
+  const byMedia = new Map<string, Item[]>();
+  for (const it of items) {
+    const keys = new Set(it.srcs.map(mediaKey).filter(Boolean) as string[]);
+    for (const k of keys) (byMedia.get(k) ?? byMedia.set(k, []).get(k)!).push(it);
+  }
+  for (const g of byMedia.values()) {
+    if (g.length > 1) {
+      const groupedAlready = new Set(groups.flatMap((G) => G.items.map((i) => i.id)));
+      if (g.filter((i) => !groupedAlready.has(i.id)).length >= 2) groups.push({ kind: "media", items: g });
+    }
+  }
 
   // 模糊层：只在标题（≥4 字符）间算重叠；已被上面任何组收编的成员 ≥2 个就跳过
   const grouped = new Set<string>();

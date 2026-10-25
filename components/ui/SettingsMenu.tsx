@@ -502,7 +502,7 @@ function Duplicates() {
       {groups?.map((g, gi) => (
         <div key={gi} className="space-y-1.5 rounded-[10px] border border-rule p-2.5">
           <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-ink-3">
-            {t(g.kind === "url" ? "dup.kindUrl" : g.kind === "text" ? "dup.kindText" : g.kind === "fuzzy" ? "dup.kindFuzzy" : "dup.kindTitle")}
+            {t(g.kind === "url" ? "dup.kindUrl" : g.kind === "text" ? "dup.kindText" : g.kind === "fuzzy" ? "dup.kindFuzzy" : g.kind === "media" ? "dup.kindMedia" : "dup.kindTitle")}
             {verdicts[gi] && (
               <span className={`rounded-full px-1.5 py-0.5 text-[10.5px] font-medium ${verdictStyle(verdicts[gi].verdict)}`}>
                 {t(verdicts[gi].verdict === "duplicate" ? "dup.vDup" : verdicts[gi].verdict === "variant" ? "dup.vVar" : verdicts[gi].verdict === "unrelated" ? "dup.vUn" : "dup.vUnknown")}

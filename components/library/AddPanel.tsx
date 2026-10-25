@@ -4,7 +4,7 @@ import { SignInButton } from "@clerk/nextjs";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BookOpen, BookmarkPlus, Check, Copy, Loader2, Plus, Trash2, X } from "lucide-react";
-import { importFromUrl, keep, looksLikeUrl } from "@/lib/import";
+import { importFromUrl, keep, looksLikeUrl, ALREADY_ON_SHELF } from "@/lib/import";
 import { normalizeUrl } from "@/lib/links";
 import { useStore } from "@/lib/store";
 import { Mark, MarkStack, type AgentMark } from "./AgentMarks";
@@ -141,7 +141,8 @@ function Links() {
         set(x.i, { state: "reading" });
         const r = await importFromUrl(x.r.url, (_, label) => label && set(x!.i, { title: label }));
         const err = r.ok ? await keep(r.article, r.file) : r.error;
-        set(x.i, err ? { state: "failed", error: err, title: undefined } : { state: "saved", title: r.ok ? r.article.title : undefined, bookmark: r.ok ? Boolean(r.article.bookmark) : undefined });
+        if (err === ALREADY_ON_SHELF) set(x.i, { state: "already", title: r.ok ? r.article.title : undefined });
+        else set(x.i, err ? { state: "failed", error: err, title: undefined } : { state: "saved", title: r.ok ? r.article.title : undefined, bookmark: r.ok ? Boolean(r.article.bookmark) : undefined });
       }
     };
     // A few at a time, so a slow site never holds the rest up.

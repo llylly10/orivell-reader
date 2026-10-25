@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TopBar } from "@/components/ui/TopBar";
 import { wordCount, type Article } from "@/lib/article";
-import { importFromFile, importFromText, importFromUrl, keep, looksLikeUrl } from "@/lib/import";
+import { importFromFile, importFromText, importFromUrl, keep, looksLikeUrl, ALREADY_ON_SHELF } from "@/lib/import";
 import { hideSample, useLibraryPrefs } from "@/lib/library-prefs";
 import { normalizeUrl } from "@/lib/links";
 import { useT } from "@/lib/lang-context";
@@ -65,13 +65,13 @@ export function Landing({ signedIn: signedInAtLoad = false }: { signedIn?: boole
     async (a: Article, file?: Blob) => {
       const err = await keep(a, file);
       if (err) {
-        setError(err);
+        setError(err === ALREADY_ON_SHELF ? t("add.alreadyIn") : err);
         setBusy(null);
         return;
       }
       go(a.id);
     },
-    [go]
+    [go, t]
   );
 
   const fromUrl = useCallback(
@@ -95,7 +95,7 @@ export function Landing({ signedIn: signedInAtLoad = false }: { signedIn?: boole
       if (!later) return finish(r.article, r.file);
       const err = await keep(r.article, r.file);
       setBusy(null);
-      if (err) return setError(err);
+      if (err) return setError(err === ALREADY_ON_SHELF ? t("add.alreadyIn") : err);
       setUrl("");
       setSaved({ id: r.article.id, title: r.article.title, bookmark: Boolean(r.article.bookmark) });
     },

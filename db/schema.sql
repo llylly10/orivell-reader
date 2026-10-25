@@ -112,3 +112,23 @@ create table if not exists entities (
 
 create index if not exists entities_user on entities (user_id);
 create index if not exists entities_name on entities (user_id, name);
+
+-- Cached duplicate-group verdicts. Keyed on the group's composition hash
+-- (sorted member hashes + judge prompt version): an unchanged group never
+-- re-judges; any member change or prompt edit invalidates it naturally.
+create table if not exists dup_verdicts (
+  user_id text not null,
+  group_hash text not null,
+  verdict text not null,
+  reason text not null default '',
+  prompt_version text not null,
+  created_at timestamptz not null default now(),
+  primary key (user_id, group_hash)
+);
+
+-- Entity canonicalization: `name` stores the normalized key (lowercase latin,
+-- CJK kept as-is, punctuation stripped) so the same real thing merges; `display`
+-- keeps the first-seen original form for the graph label; `aliases` (JSON array
+-- from the extractor) is seed data for a future alias-resolution pass.
+alter table entities add column if not exists display text;
+alter table entities add column if not exists aliases text;

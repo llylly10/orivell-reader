@@ -50,15 +50,15 @@ export async function GET() {
   }
 
   const ents = await db()`
-    select e.name, e.type, count(*)::int as n,
+    select e.name, coalesce(e.display, e.name) as label, e.type, count(*)::int as n,
            array_agg(e.article_id) as arts
     from entities e
     where e.user_id = ${userId}
-    group by e.name, e.type
+    group by e.name, e.type, label
     order by n desc`;
   for (const e of ents) {
     const eid = `e:${e.name}`;
-    nodes.push({ id: eid, k: "e", t: String(e.name), n: Number(e.n) });
+    nodes.push({ id: eid, k: "e", t: String(e.label), n: Number(e.n) });
     for (const a of e.arts ?? []) edges.push({ s: eid, t: String(a), k: "entity" });
   }
 

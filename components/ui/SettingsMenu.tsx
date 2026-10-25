@@ -401,17 +401,20 @@ function VisionOcr() {
   );
 }
 
-/** 重复项审查：列出候选组，人工决定保留哪篇（绝不自动删）。 */
+/** 重复项审查：列出候选组（含模糊变体），LLM 判定辅助，人工决定保留哪篇。 */
 function Duplicates() {
   const t = useT();
-  const [groups, setGroups] = useState<{ kind: string; items: { id: string; title: string; url: string; addedAt: number }[] }[] | null>(null);
+  const [groups, setGroups] = useState<{ kind: string; items: { id: string; title: string; url: string; opening: string; addedAt: number }[] }[] | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [judging, setJudging] = useState(false);
+  const [verdicts, setVerdicts] = useState<Record<number, { verdict: string; reason: string }>>({});
   const [keep, setKeep] = useState<Record<string, string>>({});
   const [err, setErr] = useState<string | null>(null);
 
   const scan = () => {
     setScanning(true);
     setErr(null);
+    setVerdicts({});
     fetch("/api/duplicates")
       .then((r) => r.json())
       .then((j) => {
@@ -422,6 +425,38 @@ function Duplicates() {
       })
       .catch(() => setErr(t("dup.failed")))
       .finally(() => setScanning(false));
+  };
+
+  /** LLM 判定：逐组问「同内容 / 同题变体 / 无关」，浏览器三件套出模型 */
+  const judge = async () => {
+    if (!groups?.length || judging) return;
+    setJudging(true);
+    setErr(null);
+    try {
+      const { readAiBase, readApiKey, readModelName } = await import("@/lib/ask");
+      const r = await fetch("/api/duplicates/judge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          groups: groups.map((g) => ({ kind: g.kind, items: g.items.map((i) => ({ id: i.id, title: i.title, opening: i.opening })) })),
+          baseUrl: readAiBase() || undefined,
+          apiKey: readApiKey() || undefined,
+          modelName: readModelName() || undefined,
+        }),
+      });
+      const j = await r.json();
+      if (!j.ok) {
+        setErr(j.error ?? t("dup.judgeFailed"));
+        return;
+      }
+      const v: Record<number, { verdict: string; reason: string }> = {};
+      (j.verdicts ?? []).forEach((x: { verdict: string; reason: string }, i: number) => (v[i] = x));
+      setVerdicts(v);
+    } catch {
+      setErr(t("dup.judgeFailed"));
+    } finally {
+      setJudging(false);
+    }
   };
 
   const merge = async (g: { items: { id: string }[] }) => {
@@ -438,19 +473,43 @@ function Duplicates() {
     }
   };
 
+  const verdictStyle = (v: string) =>
+    v === "duplicate"
+      ? "bg-[#c0392b]/10 text-[#c0392b]"
+      : v === "variant"
+        ? "bg-[#b07d2b]/10 text-[#b07d2b]"
+        : v === "unrelated"
+          ? "bg-[#3ba776]/10 text-[#3ba776]"
+          : "bg-sunk text-ink-3";
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <span className="text-[13px] font-medium text-ink">{t("dup.title")}</span>
-        <button type="button" onClick={scan} disabled={scanning} className="rounded-full border border-rule px-3 py-1 text-[12px] text-ink transition-colors hover:border-ink-3 hover:bg-[var(--bg-raised)] disabled:opacity-40">
-          {scanning ? t("common.loading") : t("dup.scan")}
-        </button>
+        <span className="flex items-center gap-1.5">
+          {groups?.length ? (
+            <button type="button" onClick={judge} disabled={judging} className="rounded-full border border-rule px-3 py-1 text-[12px] text-ink transition-colors hover:border-ink-3 hover:bg-[var(--bg-raised)] disabled:opacity-40">
+              {judging ? t("dup.judging") : t("dup.judge")}
+            </button>
+          ) : null}
+          <button type="button" onClick={scan} disabled={scanning} className="rounded-full border border-rule px-3 py-1 text-[12px] text-ink transition-colors hover:border-ink-3 hover:bg-[var(--bg-raised)] disabled:opacity-40">
+            {scanning ? t("common.loading") : t("dup.scan")}
+          </button>
+        </span>
       </div>
       {err && <p className="text-[12px] text-[#c0392b]">{err}</p>}
       {groups && !groups.length && <p className="text-[12px] text-ink-3">{t("dup.none")}</p>}
       {groups?.map((g, gi) => (
         <div key={gi} className="space-y-1.5 rounded-[10px] border border-rule p-2.5">
-          <p className="text-[11px] text-ink-3">{t(g.kind === "url" ? "dup.kindUrl" : g.kind === "text" ? "dup.kindText" : "dup.kindTitle")}</p>
+          <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-ink-3">
+            {t(g.kind === "url" ? "dup.kindUrl" : g.kind === "text" ? "dup.kindText" : g.kind === "fuzzy" ? "dup.kindFuzzy" : "dup.kindTitle")}
+            {verdicts[gi] && (
+              <span className={`rounded-full px-1.5 py-0.5 text-[10.5px] font-medium ${verdictStyle(verdicts[gi].verdict)}`}>
+                {t(verdicts[gi].verdict === "duplicate" ? "dup.vDup" : verdicts[gi].verdict === "variant" ? "dup.vVar" : verdicts[gi].verdict === "unrelated" ? "dup.vUn" : "dup.vUnknown")}
+              </span>
+            )}
+          </p>
+          {verdicts[gi]?.reason && <p className="text-[11.5px] leading-snug text-ink-2">{verdicts[gi].reason}</p>}
           {g.items.map((it) => (
             <label key={it.id} className="flex items-start gap-2 text-[12px] leading-snug text-ink-2">
               <input type="radio" name={`dup-${gi}`} checked={(keep[g.items[0].id] ?? g.items[0].id) === it.id} onChange={() => setKeep((k) => ({ ...k, [g.items[0].id]: it.id }))} className="mt-1 accent-[var(--rubric)]" />

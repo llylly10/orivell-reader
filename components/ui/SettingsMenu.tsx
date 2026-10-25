@@ -170,7 +170,12 @@ function CnAccounts() {
   const t = useT();
   const [states, setStates] = useState<Record<string, boolean> | null>(null);
   const [sidecar, setSidecar] = useState(true);
-  const [busy, setBusy] = useState<{ kind: string; remaining: number } | null>(null);
+  const [busy, setBusy] = useState<{ kind: string; until: number } | null>(null);
+  const [nowTick, setNowTick] = useState(Date.now());
+  useEffect(() => {
+    const iv = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(iv);
+  }, []);
   const [qr, setQr] = useState<{ platform: string; img: string | null } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -180,7 +185,7 @@ function CnAccounts() {
       .then((j) => {
         setStates(j.loginState ?? null);
         setSidecar(Boolean(j.sidecar));
-        setBusy(j.busy ? { kind: j.busyKind ?? "", remaining: j.busyRemaining ?? 0 } : null);
+        setBusy(j.busy ? { kind: j.busyKind ?? "", until: Date.now() + (j.busyRemaining ?? 0) * 1000 } : null);
       })
       .catch(() => setSidecar(false));
   };
@@ -236,7 +241,10 @@ function CnAccounts() {
       {!sidecar && <p className="rounded-[8px] bg-[var(--bg-raised)] px-2.5 py-1.5 text-[12px] text-ink-3">{t("cn.sidecarDown")}</p>}
       {busy && (
         <p className="rounded-[8px] bg-[var(--bg-raised)] px-2.5 py-1.5 text-[12px] text-ink-2">
-          {t("cn.busyNow", { kind: t(busy.kind === "login" ? "cn.kindLogin" : busy.kind === "qr" ? "cn.kindQr" : "cn.kindCrawl"), n: String(busy.remaining) })}
+          {t("cn.busyNow", {
+            kind: t(busy.kind === "login" ? "cn.kindLogin" : busy.kind === "qr" ? "cn.kindQr" : "cn.kindCrawl"),
+            n: String(Math.max(0, Math.ceil((busy.until - nowTick) / 1000))),
+          })}
         </p>
       )}
       {qr && (

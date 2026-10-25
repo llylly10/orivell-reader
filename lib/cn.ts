@@ -82,10 +82,20 @@ export async function cnCard(url: URL): Promise<Article | null> {
   for (const para of text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)) {
     blocks.push({ id: nextId(), type: "p", runs: [{ text: para.replace(/\n+/g, " ") }] });
   }
+  // B站视频：官方 iframe 播放器内联播放（player.bilibili.com 本就是给外站嵌入用的，
+  // 无防盗链），兜底是点链接回 B站看。
+  if (a.platform === "bili") {
+    const bv = /\/video\/(BV[0-9A-Za-z]+)/.exec(url.pathname)?.[1];
+    if (bv) {
+      blocks.push({ id: nextId(), type: "figure", runs: [], src: `https://player.bilibili.com/player.html?bvid=${bv}&autoplay=0&high_quality=1` });
+    }
+    blocks.push({ id: nextId(), type: "p", runs: [{ text: "▶ 在 B站观看：", strong: true }, { text: url.toString(), href: url.toString() }] });
+  }
   for (const m of a.media ?? []) {
     if (!m.url) continue;
     if (m.type === "video") {
-      // 国内 CDN 的视频有各自的防盗链，不内联播放，给一个点出去的入口
+      if (a.platform === "bili") continue; // 已用官方播放器内联
+      // 其余国内 CDN 的视频有各自的防盗链，不内联播放，给一个点出去的入口
       blocks.push({ id: nextId(), type: "p", runs: [{ text: "▶ 视频：", strong: true }, { text: "点开观看", href: m.url }] });
     } else {
       blocks.push({ id: nextId(), type: "figure", runs: [], src: m.url, alt: "" });

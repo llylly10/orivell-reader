@@ -171,6 +171,25 @@ function VideoFigure({ src, alt }: { src: string; alt?: string }) {
   );
 }
 
+/** B站官方外嵌播放器：player.bilibili.com 本就是给外站嵌入用的，无防盗链问题。 */
+function isEmbedSrc(src: string): boolean {
+  return /player\.bilibili\.com/.test(src);
+}
+
+function EmbedFigure({ src, alt }: { src: string; alt?: string }) {
+  return (
+    <iframe
+      src={src}
+      scrolling="no"
+      frameBorder={0}
+      allowFullScreen
+      allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+      title={alt ?? ""}
+      className="fig-embed"
+    />
+  );
+}
+
 function Table({ rows, head }: { rows: string[][]; head?: boolean }) {
   const t = useT();
   const body = head ? rows.slice(1) : rows;
@@ -229,7 +248,7 @@ function BlockImpl({ block, n, first, marks, activeGloss, hoverGloss, activeHigh
           {n}
         </button>
       )}
-      {block.type === "figure" && block.src && (isVideoSrc(block.src) ? <VideoFigure src={block.src} alt={block.alt} /> : <Picture src={block.src} alt={block.alt} />)}
+      {block.type === "figure" && block.src && (isEmbedSrc(block.src) ? <EmbedFigure src={block.src} alt={block.alt} /> : isVideoSrc(block.src) ? <VideoFigure src={block.src} alt={block.alt} /> : <Picture src={block.src} alt={block.alt} />)}
       {block.type === "table" && block.rows ? (
         <Table rows={block.rows} head={block.head} />
       ) : block.type === "figure" ? (

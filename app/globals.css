@@ -1859,6 +1859,17 @@ a.desk-tile:focus-visible {
   background: #000;
 }
 
+/* B站官方外嵌播放器（iframe），固定 16:9。 */
+.prose-read .fig-embed {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  border-radius: 6px;
+  background: #000;
+}
+
 .prose-read .blk[data-type="figure"] .blk-text {
   margin-top: 0.75em;
   font-family: var(--font-sans);

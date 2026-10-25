@@ -18,7 +18,7 @@
  */
 
 import { blockText, markdownBlocks, modelText, wordCount, type Article, type Block } from "./article";
-import { readApiKey } from "./ask";
+import { readAiBase, readApiKey, readModelName, readVisionEngine, readVisionModel } from "./ask";
 import { htmlTablesToMarkdown, renderPages } from "./pdf";
 import { loadDoc, loadPdf, saveDoc, useStore } from "./store";
 
@@ -120,7 +120,7 @@ export function startUpgrade(id: string, listener: (p: UpgradeProgress) => void)
               const res = await fetch("/api/pdf-page", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ image: s.image, apiKey, mode: "layout" }),
+                body: JSON.stringify({ image: s.image, apiKey, mode: "layout", engine: readVisionEngine(), baseUrl: readAiBase() || undefined, modelName: readVisionModel() || undefined }),
               });
               const j = (await res.json()) as { markdown?: string; code?: string };
               return { page: s.pageNum, markdown: j.markdown, spent: j.code === "need_key" };

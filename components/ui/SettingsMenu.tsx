@@ -344,6 +344,63 @@ function CnAccounts() {
   );
 }
 
+/** 扫描版 PDF 识别：引擎切换（云端视觉模型 / 本地 Indra OCR）。 */
+function VisionOcr() {
+  const t = useT();
+  const [engine, setEngineState] = useState<"cloud" | "local">("cloud");
+  const [model, setModel] = useState("");
+
+  useEffect(() => {
+    import("@/lib/ask").then(({ readVisionEngine, readVisionModel }) => {
+      setEngineState(readVisionEngine());
+      setModel(readVisionModel());
+    });
+  }, []);
+
+  const setEngine = (e: "cloud" | "local") => {
+    setEngineState(e);
+    import("@/lib/ask").then(({ saveVisionEngine }) => saveVisionEngine(e));
+  };
+  const setModelName = (v: string) => {
+    setModel(v);
+    import("@/lib/ask").then(({ saveVisionModel }) => saveVisionModel(v));
+  };
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[12px] leading-snug text-ink-3">{t("vision.blurb")}</p>
+      <Row label={t("vision.engine")}>
+        <Seg
+          label={t("vision.engine")}
+          value={engine}
+          onChange={setEngine}
+          options={[
+            { key: "cloud", label: t("vision.cloud") },
+            { key: "local", label: t("vision.local") },
+          ]}
+        />
+      </Row>
+      {engine === "cloud" && (
+        <div>
+          <p className="mt-1 text-[11.5px] text-ink-3">{t("vision.modelLabel")}</p>
+          <input
+            type="text"
+            value={model}
+            onChange={(e) => setModelName(e.target.value)}
+            placeholder="qwen-vl-ocr"
+            autoComplete="off"
+            spellCheck={false}
+            aria-label={t("vision.modelLabel")}
+            className="mt-1.5 h-9 w-full rounded-lg border border-rule bg-bg px-3 text-[13px] text-ink outline-none focus-visible:outline-none placeholder:text-ink-4 focus:border-rule-strong"
+          />
+          <p className="mt-2 text-[11px] leading-snug text-ink-4">{t("vision.cloudHint")}</p>
+        </div>
+      )}
+      {engine === "local" && <p className="text-[11px] leading-snug text-ink-4">{t("vision.localHint")}</p>}
+    </div>
+  );
+}
+
 export function SettingsMenu({ compact = false }: { compact?: boolean }) {
   const settings = useStore((s) => s.settings);
   const setSettings = useStore((s) => s.setSettings);
@@ -632,6 +689,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
             <div className="space-y-4">
               <XSync />
               <CnAccounts />
+              <VisionOcr />
             </div>
           )}
         </div>

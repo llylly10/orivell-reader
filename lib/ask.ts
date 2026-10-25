@@ -75,6 +75,43 @@ export function saveImageModel(name: string) {
   } catch {}
 }
 
+const VISION_ENGINE_STORAGE = "gloss:vision-engine";
+const VISION_MODEL_STORAGE = "gloss:vision-model";
+
+/** 扫描版 PDF 的识别引擎：cloud = 兼容视觉模型（走三件套）；local = 本地 Indra OCR sidecar。 */
+export function readVisionEngine(): "cloud" | "local" {
+  try {
+    return localStorage.getItem(VISION_ENGINE_STORAGE) === "local" ? "local" : "cloud";
+  } catch {
+    return "cloud";
+  }
+}
+
+export function saveVisionEngine(e: "cloud" | "local") {
+  try {
+    localStorage.setItem(VISION_ENGINE_STORAGE, e);
+    window.dispatchEvent(new Event("gloss:visionengine"));
+  } catch {}
+}
+
+/** 云端视觉模型的名称（qwen-vl-ocr / GLM-4.6V 等）。 */
+export function readVisionModel(): string {
+  try {
+    return localStorage.getItem(VISION_MODEL_STORAGE) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function saveVisionModel(name: string) {
+  try {
+    const v = name.trim();
+    if (v) localStorage.setItem(VISION_MODEL_STORAGE, v);
+    else localStorage.removeItem(VISION_MODEL_STORAGE);
+    window.dispatchEvent(new Event("gloss:visionmodel"));
+  } catch {}
+}
+
 const controllers = new Map<string, AbortController>();
 
 export function stopGloss(id: string) {

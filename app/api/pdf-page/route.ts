@@ -1,5 +1,7 @@
 import { chargeFree, checkFree, needKey } from "@/lib/quota";
-import { APP_UA, TOGETHER_URL } from "@/lib/together";
+import { APP_UA, TOGETHER_URL, usingCustomAI } from "@/lib/together";
+import { existsSync } from "node:fs";
+import { spawn } from "node:child_process";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -9,6 +11,11 @@ export const maxDuration = 120;
  * glyphs), read by a vision model into Markdown. Qwen3.8 Flash is the vision
  * model Together serves per request; the dedicated OCR models (GLM-OCR,
  * DeepSeek-OCR-2) need their own endpoint. Checked 2026-10-10.
+ *
+ * 引擎可插拔（设置页切换）：
+ * - cloud（默认）：OpenAI 兼容视觉模型——地址/密钥/模型名来自浏览器三件套，
+ *   回落 AI_VISION_* 环境变量，最后才是 Together
+ * - local：本地 Indra OCR sidecar（免费离线，D:\shujia\indra-ocr）
  */
 const MODEL = "Qwen/Qwen3.8-Flash";
 const PRICE = { inPerM: 0.15, outPerM: 0.47 };
@@ -47,7 +54,7 @@ function clean(md: string): string {
 }
 
 export async function POST(req: Request) {
-  let body: { image?: string; apiKey?: string; mode?: string };
+  let body: { image?: string; apiKey?: string; mode?: string; engine?: string; baseUrl?: string; modelName?: string };
   try {
     body = await req.json();
   } catch {
@@ -59,30 +66,81 @@ export async function POST(req: Request) {
 
   const headerKey = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "").trim();
   const own = body.apiKey?.trim() || headerKey || undefined;
+  // 引擎：local = 本地 Indra OCR sidecar（免费离线）；cloud（默认）= OpenAI 兼容视觉模型
+  const engineLocal = body.engine === "local";
+  const layout = body.mode === "layout";
+  // 自定义服务的地址优先级：浏览器 > AI_VISION_BASE_URL > AI_BASE_URL；都没有则走 Together
+  const customBase =
+    body.baseUrl?.trim().replace(/\/+$/, "") ||
+    process.env.AI_VISION_BASE_URL?.trim().replace(/\/+$/, "") ||
+    process.env.AI_BASE_URL?.trim().replace(/\/+$/, "") ||
+    "";
+  const custom = Boolean(customBase) || Boolean(body.modelName?.trim()) || usingCustomAI();
+  const model = body.modelName?.trim() || process.env.AI_VISION_MODEL?.trim() || (layout ? LAYOUT_MODEL : MODEL);
+  const price = layout ? LAYOUT_PRICE : PRICE;
   let free: Awaited<ReturnType<typeof checkFree>> | null = null;
-  if (!own) {
-    if (!process.env.TOGETHER_API_KEY) return needKey(null);
-    free = await checkFree(req, 90);
-    if (!free.ok) return needKey(free);
+  if (!own && !engineLocal) {
+    if (!custom && !process.env.TOGETHER_API_KEY) return needKey(null);
+    if (!custom) {
+      free = await checkFree(req, 90);
+      if (!free.ok) return needKey(free);
+    }
   }
 
-  const layout = body.mode === "layout";
-  const model = layout ? LAYOUT_MODEL : MODEL;
-  const price = layout ? LAYOUT_PRICE : PRICE;
+  if (engineLocal) {
+    // 本地 Indra OCR sidecar：页面图片进，Markdown 出，免费离线。
+    // 没在跑就自动拉起（模型加载约 10-25 秒，之后常驻）。
+    const indraUrl = process.env.INDRA_URL || "http://127.0.0.1:8898";
+    const indraPy = process.env.INDRA_PY || "D:/shujia/indra-ocr/.venv/Scripts/python.exe";
+    const indraSidecar = process.env.INDRA_SIDECAR || "D:/shujia/indra-ocr/sidecar.py";
+    let up = false;
+    try {
+      up = (await fetch(`${indraUrl}/status`, { signal: AbortSignal.timeout(1500) })).ok;
+    } catch {}
+    if (!up && existsSync(indraPy) && existsSync(indraSidecar)) {
+      spawn(indraPy, [indraSidecar], { cwd: "D:/shujia/indra-ocr", detached: true, windowsHide: true, stdio: "ignore" }).unref();
+      for (let i = 0; i < 20; i++) {
+        await new Promise((r) => setTimeout(r, 1500));
+        try {
+          up = (await fetch(`${indraUrl}/status`, { signal: AbortSignal.timeout(1500) })).ok;
+          if (up) break;
+        } catch {}
+      }
+    }
+    if (!up) return Response.json({ error: "本地 OCR sidecar 无法启动。" }, { status: 502 });
+    try {
+      const r = await fetch(`${indraUrl}/ocr`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image }),
+        signal: req.signal,
+      });
+      const j = (await r.json().catch(() => ({}))) as { markdown?: string; error?: string };
+      if (!r.ok || !j.markdown) return Response.json({ error: j.error ?? "本地 OCR 未返回内容。" }, { status: 502 });
+      return Response.json({ markdown: clean(String(j.markdown)) });
+    } catch {
+      return Response.json({ error: "本地 OCR 调用失败。" }, { status: 502 });
+    }
+  }
+
+  const together = !customBase;
+  const endpoint = together ? TOGETHER_URL : customBase.endsWith("/chat/completions") ? customBase : `${customBase}/chat/completions`;
+  const keyHeader = own ?? (together ? process.env.TOGETHER_API_KEY : process.env.AI_VISION_API_KEY || process.env.AI_API_KEY) ?? "";
 
   let res: Response;
   try {
-    res = await fetch(TOGETHER_URL, {
+    res = await fetch(endpoint, {
       method: "POST",
       signal: req.signal,
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${own ?? process.env.TOGETHER_API_KEY}`, "User-Agent": APP_UA },
+      headers: { "Content-Type": "application/json", ...(keyHeader ? { Authorization: `Bearer ${keyHeader}` } : {}), "User-Agent": APP_UA },
       body: JSON.stringify({
         model,
         stream: true, // Qwen3.8 Flash only answers as a stream
         stream_options: { include_usage: true },
         temperature: 0,
         max_tokens: 4096,
-        chat_template_kwargs: { enable_thinking: false },
+        // Together 的思考开关是私有扩展，只在 Together 模式发送
+        ...(together ? { chat_template_kwargs: { enable_thinking: false } } : {}),
         messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: image } }, { type: "text", text: layout ? LAYOUT_PROMPT : PROMPT }] }],
       }),
     });

@@ -3,6 +3,7 @@ import { saveCover } from "@/lib/db";
 import { isCustomKey, isTopic } from "@/lib/library";
 import { COVER_USD, paintCover } from "@/lib/paint";
 import { chargeFree, checkFree, needKey } from "@/lib/quota";
+import { usingCustomAI } from "@/lib/together";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -13,7 +14,7 @@ export const maxDuration = 60;
  * it again. The picture comes back as a JPEG.
  */
 export async function POST(req: Request) {
-  let body: { id?: string; scene?: string; topic?: string; apiKey?: string };
+  let body: { id?: string; scene?: string; topic?: string; apiKey?: string; baseUrl?: string };
   try {
     body = await req.json();
   } catch {
@@ -26,11 +27,13 @@ export async function POST(req: Request) {
   const apiKey = body.apiKey?.trim() || undefined;
   let free: Awaited<ReturnType<typeof checkFree>> | null = null;
   if (!apiKey) {
-    if (!process.env.TOGETHER_API_KEY) return needKey(null);
-    free = await checkFree(req, 12);
-    if (!free.ok) return needKey(free);
+    if (!usingCustomAI() && !process.env.TOGETHER_API_KEY) return needKey(null);
+    if (!usingCustomAI()) {
+      free = await checkFree(req, 12);
+      if (!free.ok) return needKey(free);
+    }
   }
-  const r = await paintCover({ scene, topic: body.topic, apiKey, signal: req.signal });
+  const r = await paintCover({ scene, topic: body.topic, apiKey, baseUrl: body.baseUrl, signal: req.signal });
   if (!r.ok) return Response.json({ error: r.error }, { status: 502 });
   if (free) await chargeFree(free.subject, COVER_USD);
 

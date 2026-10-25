@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { KeyRound } from "lucide-react";
-import { validateKey, readModelName, saveModelName, readAiBase, saveAiBase } from "@/lib/ask";
+import { validateKey, readModelName, saveModelName, readAiBase, saveAiBase, readImageModel, saveImageModel } from "@/lib/ask";
 import { BRAND } from "@/lib/brand";
 import { useT } from "@/lib/lang-context";
 import { Popover, barBtn } from "./Popover";
@@ -65,6 +65,7 @@ function KeyPanel({ current, house, free, custom, onSave, close }: { current: st
   const [draft, setDraft] = useState(current);
   const [model, setModel] = useState(readModelName());
   const [base, setBase] = useState(readAiBase());
+  const [imageModel, setImageModel] = useState(readImageModel());
   const [state, setState] = useState<"idle" | "checking" | "bad">("idle");
 
   const save = async () => {
@@ -92,6 +93,7 @@ function KeyPanel({ current, house, free, custom, onSave, close }: { current: st
     } catch {}
     saveModelName(model);
     saveAiBase(base);
+    saveImageModel(imageModel);
     onSave(v);
     close();
   };
@@ -151,6 +153,18 @@ function KeyPanel({ current, house, free, custom, onSave, close }: { current: st
         autoComplete="off"
         spellCheck={false}
         aria-label={t("key.baseLabel")}
+        className="mt-1.5 h-9 w-full rounded-lg border border-rule bg-bg px-3 text-[13px] text-ink outline-none focus-visible:outline-none placeholder:text-ink-4 focus:border-rule-strong"
+      />
+      <p className="mt-3 text-[11.5px] text-ink-3">{t("key.imageModelLabel")}</p>
+      <input
+        type="text"
+        value={imageModel}
+        onChange={(e) => setImageModel(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && save()}
+        placeholder="wanx2.1-t2i-turbo…"
+        autoComplete="off"
+        spellCheck={false}
+        aria-label={t("key.imageModelLabel")}
         className="mt-1.5 h-9 w-full rounded-lg border border-rule bg-bg px-3 text-[13px] text-ink outline-none focus-visible:outline-none placeholder:text-ink-4 focus:border-rule-strong"
       />
       <p className="mt-2 text-[11.5px] leading-snug text-ink-4">Sent with your requests only. Stored in this browser, never on a server, never logged.</p>

@@ -37,6 +37,7 @@ export function saveModelName(name: string) {
 }
 
 const BASE_STORAGE = "gloss:ai-base";
+const IMAGE_MODEL_STORAGE = "gloss:image-model";
 
 /** 浏览器里存的请求地址（OpenAI 兼容服务）。设置页的密钥面板写入。 */
 export function readAiBase(): string {
@@ -53,6 +54,24 @@ export function saveAiBase(url: string) {
     if (v) localStorage.setItem(BASE_STORAGE, v);
     else localStorage.removeItem(BASE_STORAGE);
     window.dispatchEvent(new Event("gloss:aibase"));
+  } catch {}
+}
+
+/** 浏览器里存的封面绘制模型（图像服务）。设置页的密钥面板写入。 */
+export function readImageModel(): string {
+  try {
+    return localStorage.getItem(IMAGE_MODEL_STORAGE) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function saveImageModel(name: string) {
+  try {
+    const v = name.trim();
+    if (v) localStorage.setItem(IMAGE_MODEL_STORAGE, v);
+    else localStorage.removeItem(IMAGE_MODEL_STORAGE);
+    window.dispatchEvent(new Event("gloss:imagemodel"));
   } catch {}
 }
 

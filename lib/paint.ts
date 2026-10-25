@@ -30,13 +30,15 @@ export async function paintCover(req: {
   topic: string;
   apiKey?: string;
   baseUrl?: string;
+  /** 浏览器「添加密钥」里存的封面绘制模型——优先于 AI_IMAGE_MODEL 环境变量 */
+  imageModel?: string;
   signal?: AbortSignal;
 }): Promise<{ ok: true; jpeg: Uint8Array } | { ok: false; error: string }> {
   // 三件套的优先级：浏览器（添加密钥）> 服务端图像专用 env > Together 默认
   const browserBase = req.baseUrl?.trim().replace(/\/+$/, "") ?? "";
   const base = browserBase || IMAGE_BASE || "https://api.together.xyz";
   const isTogether = /together\.xyz/.test(base);
-  const imageModel = IMAGE_MODEL || DEFAULT_MODEL;
+  const imageModel = req.imageModel?.trim() || IMAGE_MODEL || DEFAULT_MODEL;
   const key = browserBase
     ? req.apiKey?.trim() || ""
     : IMAGE_BASE

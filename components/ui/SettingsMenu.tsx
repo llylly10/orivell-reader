@@ -342,23 +342,21 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
     <Popover label={t("topbar.appearance")} tip={t("topbar.appearanceTip")} width={compact ? 316 : 348} triggerClass={barBtn} trigger={<span className="block translate-y-[0.5px] font-serif text-[18px] leading-none">Aa</span>}>
       {() => (
         <div>
-          {!compact && (
-            <div className="mb-4">
-              <Seg
-                label={t("settings.section")}
-                value={tab}
-                onChange={setTab}
-                options={[
-                  { key: "look", label: t("settings.look") },
-                  { key: "text", label: t("settings.text") },
-                  { key: "answers", label: t("settings.answers") },
-                  { key: "cn", label: t("settings.platforms") },
-                ]}
-              />
-            </div>
-          )}
+          <div className="mb-4">
+            <Seg
+              label={t("settings.section")}
+              value={tab}
+              onChange={setTab}
+              options={[
+                { key: "look", label: t("settings.look") },
+                { key: "text", label: t("settings.text") },
+                { key: "answers", label: t("settings.answers") },
+                { key: "cn", label: t("settings.platforms") },
+              ]}
+            />
+          </div>
 
-          {(compact || tab === "look") && (
+          {tab === "look" && (
             <div className="space-y-3.5">
               <div>
                 <p className="mb-2.5 text-[12.5px] text-ink-3">{t("settings.theme")}</p>
@@ -433,7 +431,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
             </div>
           )}
 
-          {!compact && tab === "text" && (
+          {tab === "text" && (
             <div className="space-y-3.5">
               <div>
                 <p className="mb-2.5 text-[12.5px] text-ink-3">{t("settings.typeface")}</p>
@@ -543,7 +541,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
             </div>
           )}
 
-          {!compact && tab === "answers" && (
+          {tab === "answers" && (
             <div className="space-y-4">
               <div>
                 <p className="mb-2 text-[12.5px] text-ink-3">{t("settings.answerLength")}</p>
@@ -563,7 +561,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
               </div>
             </div>
           )}
-          {!compact && tab === "cn" && <CnAccounts />}
+          {tab === "cn" && <CnAccounts />}
         </div>
       )}
     </Popover>

@@ -97,3 +97,18 @@ create table if not exists agent_tokens (
 );
 
 create index if not exists agent_tokens_user on agent_tokens (user_id);
+
+-- Knowledge-graph entities extracted from one article by the reader's AI
+-- provider (name + a coarse type). One row per (article, entity); a name may
+-- appear on many articles — the co-occurrence is the graph edge.
+create table if not exists entities (
+  user_id text not null,
+  article_id text not null,
+  name text not null,
+  type text not null default 'concept',
+  created_at timestamptz not null default now(),
+  primary key (user_id, article_id, name)
+);
+
+create index if not exists entities_user on entities (user_id);
+create index if not exists entities_name on entities (user_id, name);

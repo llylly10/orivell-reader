@@ -3,7 +3,7 @@
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, ViewTransition } from "react";
-import { ChevronLeft, ChevronRight, LayoutGrid, Library as LibraryIcon, PencilLine, Plus, Search, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, LayoutGrid, Library as LibraryIcon, PencilLine, Plus, Search, Share2, Trash2, X } from "lucide-react";
 import { TopBar } from "@/components/ui/TopBar";
 import { readingMinutes, tidyTitle, wordCount } from "@/lib/article";
 import { forgetCover, paintAll } from "@/lib/covers";
@@ -349,6 +349,9 @@ export function Library() {
           <div className="lib-tools">
             <ViewSwitch view={view} onChange={(v) => go({ view: v })} />
             {searchBox}
+            <a href="/graph" aria-label={t("graph.title")} data-tip={t("graph.title")} className="grid size-8 place-items-center rounded-full text-ink-3 transition-colors hover:bg-sunk hover:text-ink">
+              <Share2 size={15} strokeWidth={1.8} aria-hidden />
+            </a>
             {view === "shelf" && (
               <div className="lib-sort" role="radiogroup" aria-label={t("lib.arrangeBy")}>
                 <span className="px-2 text-[12.5px] text-ink-4 max-md:hidden">{t("lib.arrangeBy")}</span>

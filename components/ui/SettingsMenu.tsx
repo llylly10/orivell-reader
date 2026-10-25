@@ -153,6 +153,50 @@ let swap: { finished: Promise<void> } | null = null;
  * Type, colour and answers in one small panel. Every change applies to the
  * page underneath immediately, so the page itself is the preview.
  */
+/** X 书签一键同步：拉取 → 入本地书库 → 推到书架，进度轮询显示。 */
+function XSync() {
+  const t = useT();
+  const [st, setSt] = useState<{ running?: boolean; step?: string; lines?: string[]; done?: boolean; error?: string | null; never?: boolean } | null>(null);
+
+  const refresh = () => {
+    fetch("/api/x-sync")
+      .then((r) => r.json())
+      .then(setSt)
+      .catch(() => {});
+  };
+  useEffect(() => {
+    refresh();
+    const iv = setInterval(refresh, 3000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const running = Boolean(st?.running);
+  const stepLabel = st?.step === "fetch" ? t("xs.stepFetch") : st?.step === "sqlite" ? t("xs.stepSqlite") : st?.step === "neon" ? t("xs.stepNeon") : "";
+  const start = () => {
+    fetch("/api/x-sync", { method: "POST" })
+      .then(refresh)
+      .catch(() => {});
+  };
+
+  return (
+    <div className="rounded-[10px] border border-rule p-2.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[13px] font-medium text-ink">X 书签同步</span>
+        <button type="button" onClick={start} disabled={running} className="rounded-full border border-rule px-3 py-1 text-[12px] text-ink transition-colors hover:border-ink-3 hover:bg-[var(--bg-raised)] disabled:opacity-40">
+          {running ? t("xs.syncing") : t("xs.sync")}
+        </button>
+      </div>
+      {st?.never && <p className="mt-1.5 text-[11px] text-ink-3">{t("xs.never")}</p>}
+      {st?.error && <p className="mt-1.5 text-[12px] leading-snug text-[#c0392b]">{st.error}</p>}
+      {running && <p className="mt-1.5 text-[12px] text-ink-2">{stepLabel}…</p>}
+      {st?.done && <p className="mt-1.5 text-[12px] text-[#3ba776]">✓ {t("xs.done")}</p>}
+      {st?.lines?.length ? (
+        <pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap rounded-[8px] bg-[var(--bg-raised)] p-2 text-[11px] leading-snug text-ink-3">{st.lines.join("\n")}</pre>
+      ) : null}
+    </div>
+  );
+}
+
 const CN_PLATFORMS: [string, string][] = [
   ["xhs", "小红书"],
   ["wb", "微博"],
@@ -584,7 +628,12 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
               </div>
             </div>
           )}
-          {tab === "cn" && <CnAccounts />}
+          {tab === "cn" && (
+            <div className="space-y-4">
+              <XSync />
+              <CnAccounts />
+            </div>
+          )}
         </div>
       )}
     </Popover>

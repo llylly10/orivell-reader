@@ -33,13 +33,16 @@ export async function GET(req: Request) {
 
 export async function DELETE(req: Request) {
   const platform = new URL(req.url).searchParams.get("platform") ?? "";
+  if (!platform) return Response.json({ ok: false, error: "platform is required." }, { status: 400 });
   try {
-    await fetch(`${SIDECAR}/login-qr/stop`, {
+    const res = await fetch(`${SIDECAR}/login-qr/stop`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ platform }),
       signal: AbortSignal.timeout(5000),
     });
-  } catch {}
-  return Response.json({ ok: true });
+    return Response.json(await res.json());
+  } catch {
+    return Response.json({ ok: false, error: "sidecar 未运行。" }, { status: 502 });
+  }
 }

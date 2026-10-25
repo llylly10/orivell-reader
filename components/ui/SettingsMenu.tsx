@@ -170,6 +170,7 @@ function CnAccounts() {
   const t = useT();
   const [states, setStates] = useState<Record<string, boolean> | null>(null);
   const [sidecar, setSidecar] = useState(true);
+  const [busy, setBusy] = useState<{ kind: string; remaining: number } | null>(null);
   const [qr, setQr] = useState<{ platform: string; img: string | null } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -179,6 +180,7 @@ function CnAccounts() {
       .then((j) => {
         setStates(j.loginState ?? null);
         setSidecar(Boolean(j.sidecar));
+        setBusy(j.busy ? { kind: j.busyKind ?? "", remaining: j.busyRemaining ?? 0 } : null);
       })
       .catch(() => setSidecar(false));
   };
@@ -234,6 +236,11 @@ function CnAccounts() {
     <div className="space-y-3">
       <p className="text-[12px] leading-snug text-ink-3">{t("cn.blurb")}</p>
       {!sidecar && <p className="rounded-[8px] bg-[var(--bg-raised)] px-2.5 py-1.5 text-[12px] text-ink-3">{t("cn.sidecarDown")}</p>}
+      {busy && (
+        <p className="rounded-[8px] bg-[var(--bg-raised)] px-2.5 py-1.5 text-[12px] text-ink-2">
+          {t("cn.busyNow", { kind: t(busy.kind === "login" ? "cn.kindLogin" : busy.kind === "qr" ? "cn.kindQr" : "cn.kindCrawl"), n: String(busy.remaining) })}
+        </p>
+      )}
       {qr && (
         <div className="overflow-hidden rounded-[12px] border border-rule bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-rule px-3 py-2">
@@ -267,11 +274,11 @@ function CnAccounts() {
                 <span className={`text-[11px] leading-tight ${on ? "text-[#3ba776]" : "text-ink-4"}`}>{on ? `✓ ${t("cn.loggedIn")}` : t("cn.notLoggedIn")}</span>
               </span>
               {!on ? (
-                <span className="flex shrink-0 items-center gap-1.5">
-                  <button type="button" onClick={() => startQr(key)} className="rounded-full border border-rule px-3 py-1 text-[12px] text-ink transition-colors hover:border-ink-3 hover:bg-[var(--bg-raised)]">
+                <span className={`flex shrink-0 items-center gap-1.5 ${busy ? "pointer-events-none opacity-40" : ""}`}>
+                  <button type="button" disabled={!!busy} onClick={() => startQr(key)} className="rounded-full border border-rule px-3 py-1 text-[12px] text-ink transition-colors hover:border-ink-3 hover:bg-[var(--bg-raised)]">
                     {t("cn.login")}
                   </button>
-                  <button type="button" onClick={() => startPopup(key)} data-tip={t("cn.popupLogin")} className="rounded-full px-1.5 py-1 text-[12px] text-ink-3 transition-colors hover:text-ink">
+                  <button type="button" disabled={!!busy} onClick={() => startPopup(key)} data-tip={t("cn.popupLogin")} className="rounded-full px-1.5 py-1 text-[12px] text-ink-3 transition-colors hover:text-ink">
                     {t("cn.popupLogin")}
                   </button>
                 </span>

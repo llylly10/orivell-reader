@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { AlignJustify, AlignLeft, Focus, Headphones, Languages, Map as MapIcon, Minus, Paintbrush, Pilcrow, Plus, RotateCcw } from "lucide-react";
 import { MODELS, type ModelKey } from "@/lib/models";
@@ -153,13 +153,137 @@ let swap: { finished: Promise<void> } | null = null;
  * Type, colour and answers in one small panel. Every change applies to the
  * page underneath immediately, so the page itself is the preview.
  */
+const CN_PLATFORMS: [string, string][] = [
+  ["xhs", "小红书"],
+  ["wb", "微博"],
+  ["dy", "抖音"],
+  ["tieba", "贴吧"],
+  ["bili", "B站"],
+  ["ks", "快手"],
+  ["zh", "知乎"],
+];
+
+/** 国内平台登录态：扫码二维码内嵌在这里（sidecar 截图流），也可改为弹出浏览器窗口。 */
+function CnAccounts() {
+  const t = useT();
+  const [states, setStates] = useState<Record<string, boolean> | null>(null);
+  const [sidecar, setSidecar] = useState(true);
+  const [qr, setQr] = useState<{ platform: string; img: string | null } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const refresh = () => {
+    fetch("/api/cn-status")
+      .then((r) => r.json())
+      .then((j) => {
+        setStates(j.loginState ?? null);
+        setSidecar(Boolean(j.sidecar));
+      })
+      .catch(() => setSidecar(false));
+  };
+  useEffect(() => {
+    refresh();
+    const iv = setInterval(refresh, 4000);
+    return () => clearInterval(iv);
+  }, []);
+
+  useEffect(() => {
+    if (!qr) return;
+    const iv = setInterval(() => {
+      fetch(`/api/cn-qr?platform=${qr.platform}`)
+        .then((r) => r.json())
+        .then((j) => {
+          if (j.done) {
+            setQr(null);
+            refresh();
+          } else if (j.img) {
+            setQr((q) => (q && q.platform === qr.platform ? { ...q, img: j.img as string } : q));
+          }
+        })
+        .catch(() => {});
+    }, 1200);
+    return () => clearInterval(iv);
+  }, [qr?.platform]);
+
+  const startQr = async (p: string) => {
+    setErr(null);
+    try {
+      const r = await fetch("/api/cn-qr", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ platform: p }) });
+      const j = await r.json();
+      if (j.ok) setQr({ platform: p, img: null });
+      else setErr(j.error ?? t("cn.failed"));
+    } catch {
+      setErr(t("cn.failed"));
+    }
+  };
+  const startPopup = async (p: string) => {
+    setErr(null);
+    try {
+      await fetch("/api/cn-login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ platform: p }) });
+    } catch {
+      setErr(t("cn.failed"));
+    }
+  };
+  const stopQr = async (p: string) => {
+    await fetch(`/api/cn-qr?platform=${p}`, { method: "DELETE" }).catch(() => {});
+    setQr(null);
+  };
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[12px] leading-snug text-ink-3">{t("cn.blurb")}</p>
+      {!sidecar && <p className="text-[12px] text-ink-3">{t("cn.sidecarDown")}</p>}
+      {qr && (
+        <div className="rounded-[10px] border border-rule p-2.5">
+          <p className="mb-2 text-[12px] text-ink-2">
+            {t("cn.waiting")} · {CN_PLATFORMS.find(([k]) => k === qr.platform)?.[1]}
+          </p>
+          <div className="grid min-h-[160px] place-items-center overflow-hidden rounded-[8px] bg-white">
+            {qr.img ? <img src={`data:image/jpeg;base64,${qr.img}`} alt="" className="w-full" /> : <span className="p-6 text-[12px] text-ink-3">…</span>}
+          </div>
+          <div className="mt-2 flex items-center justify-between">
+            <span className="text-[11px] text-ink-3">{t("cn.qrTip")}</span>
+            <button type="button" onClick={() => stopQr(qr.platform)} className="text-[12px] text-ink-3 transition-colors hover:text-ink">
+              {t("cn.cancel")}
+            </button>
+          </div>
+        </div>
+      )}
+      <div className="space-y-1">
+        {CN_PLATFORMS.map(([key, name]) => {
+          const on = states?.[key] === true;
+          return (
+            <div key={key} className="flex items-center justify-between rounded-[8px] px-2 py-1.5 transition-colors hover:bg-[var(--bg-raised)]">
+              <span className="flex items-center gap-2 text-[13px] text-ink">
+                <span className={`size-1.5 rounded-full ${on ? "bg-[#3ba776]" : "bg-[var(--rule-strong)]"}`} />
+                {name}
+                <span className="text-[11px] text-ink-3">{on ? t("cn.loggedIn") : t("cn.notLoggedIn")}</span>
+              </span>
+              {!on && (
+                <span className="flex items-center gap-3">
+                  <button type="button" onClick={() => startQr(key)} className="text-[12px] text-ink-2 transition-colors hover:text-ink">
+                    {t("cn.login")}
+                  </button>
+                  <button type="button" onClick={() => startPopup(key)} data-tip={t("cn.popupLogin")} className="text-[12px] text-ink-3 transition-colors hover:text-ink">
+                    {t("cn.popupLogin")}
+                  </button>
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {err && <p className="text-[12px] text-[var(--danger, #c0392b)]">{err}</p>}
+    </div>
+  );
+}
+
 export function SettingsMenu({ compact = false }: { compact?: boolean }) {
   const settings = useStore((s) => s.settings);
   const setSettings = useStore((s) => s.setSettings);
   const focusMode = useStore((s) => s.focusMode);
   const setUI = useStore((s) => s.setUI);
   const t = useT();
-  const [tab, setTab] = useState<"look" | "text" | "answers">("look");
+  const [tab, setTab] = useState<"look" | "text" | "answers" | "cn">("look");
 
   const set = (patch: Partial<Settings>) => {
     setSettings(patch);
@@ -228,6 +352,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
                   { key: "look", label: t("settings.look") },
                   { key: "text", label: t("settings.text") },
                   { key: "answers", label: t("settings.answers") },
+                  { key: "cn", label: t("settings.platforms") },
                 ]}
               />
             </div>
@@ -438,6 +563,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
               </div>
             </div>
           )}
+          {!compact && tab === "cn" && <CnAccounts />}
         </div>
       )}
     </Popover>

@@ -199,6 +199,11 @@ function CnAccounts() {
           if (j.done) {
             setQr(null);
             refresh();
+          } else if (j.running === false) {
+            // 会话已结束（超时/异常）且没登录成功：如实告知，停止轮询
+            setErr(j.error ?? t("cn.sessionEnded"));
+            setQr(null);
+            clearInterval(iv);
           } else if (j.img) {
             setQr((q) => (q && q.platform === qr.platform ? { ...q, img: j.img as string } : q));
           }
@@ -208,10 +213,10 @@ function CnAccounts() {
     return () => clearInterval(iv);
   }, [qr?.platform]);
 
-  const startQr = async (p: string) => {
+  const startQr = async (p: string, window = false) => {
     setErr(null);
     try {
-      const r = await fetch("/api/cn-qr", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ platform: p }) });
+      const r = await fetch("/api/cn-qr", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ platform: p, headless: !window }) });
       const j = await r.json();
       if (j.ok) setQr({ platform: p, img: null });
       else setErr(j.error?.includes("正在进行") ? t("cn.busy") : j.error ?? t("cn.failed"));
@@ -219,14 +224,7 @@ function CnAccounts() {
       setErr(t("cn.failed"));
     }
   };
-  const startPopup = async (p: string) => {
-    setErr(null);
-    try {
-      await fetch("/api/cn-login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ platform: p }) });
-    } catch {
-      setErr(t("cn.failed"));
-    }
-  };
+  const startPopup = (p: string) => startQr(p, true);
   const stopQr = async (p: string) => {
     await fetch(`/api/cn-qr?platform=${p}`, { method: "DELETE" }).catch(() => {});
     setQr(null);

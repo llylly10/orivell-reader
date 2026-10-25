@@ -1,5 +1,5 @@
 import { buildMessages, isLengthKey, webBlock, type DocPayload, type ThreadPayload } from "@/lib/prompts";
-import { DEFAULT_MODEL, isModelKey, streamChat, type ChatMessage, type StreamEvent } from "@/lib/together";
+import { DEFAULT_MODEL, isModelKey, streamChat, usingCustomAI, type ChatMessage, type StreamEvent } from "@/lib/together";
 import { ACTIONS } from "@/lib/actions";
 import { chargeFree, checkFree, estimateUsd, needKey } from "@/lib/quota";
 import { MODELS, type Usage } from "@/lib/models";
@@ -15,6 +15,10 @@ const MAX_DOC_CHARS = 600_000;
 type Body = {
   apiKey?: string;
   model?: string;
+  /** 浏览器「添加密钥」里存的模型名——自定义 AI 服务下优先于 AI_MODEL */
+  modelName?: string;
+  /** 浏览器「添加密钥」里存的请求地址（OpenAI 兼容服务）——优先于 AI_BASE_URL */
+  baseUrl?: string;
   length?: string;
   doc?: DocPayload;
   thread?: ThreadPayload;
@@ -46,11 +50,14 @@ export async function POST(req: Request) {
   const headerKey = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "").trim();
   const apiKey = body.apiKey?.trim() || headerKey || undefined;
   // No key of their own: a few cents of answers a day on the shared key, then they bring one.
+  // 自定义 AI 服务下 key 可选，也跳过免费额度记账（计价随服务商）。
   let free: Awaited<ReturnType<typeof checkFree>> | null = null;
   if (!apiKey) {
-    if (!process.env.TOGETHER_API_KEY) return needKey(null);
-    free = await checkFree(req);
-    if (!free.ok) return needKey(free);
+    if (!usingCustomAI() && !body.baseUrl && !process.env.TOGETHER_API_KEY) return needKey(null);
+    if (!usingCustomAI() && !body.baseUrl) {
+      free = await checkFree(req);
+      if (!free.ok) return needKey(free);
+    }
   }
 
   // Fact-check looks things up first, always. Any other question offers the model a web_search tool,
@@ -88,7 +95,7 @@ export async function POST(req: Request) {
       /** Streams one model call to the browser, keeping usage and done for the end; returns a tool call if it made one. */
       const relay = async (messages: ChatMessage[], tools: "offer" | "answer" | "none") => {
         let call: Extract<StreamEvent, { type: "tool" }> | null = null;
-        for await (const ev of streamChat({ messages, model, apiKey, maxTokens, signal: req.signal, ...(tools !== "none" ? { tools: [WEB_TOOL], toolChoice: tools === "offer" ? "auto" : "none" } : {}) })) {
+        for await (const ev of streamChat({ messages, model, apiKey, modelName: body.modelName, baseUrl: body.baseUrl, maxTokens, signal: req.signal, ...(tools !== "none" ? { tools: [WEB_TOOL], toolChoice: tools === "offer" ? "auto" : "none" } : {}) })) {
           if (ev.type === "tool") call = ev;
           else if (ev.type === "usage") add(ev.usage);
           else if (ev.type !== "done") controller.enqueue(send(ev));

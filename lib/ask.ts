@@ -8,6 +8,7 @@ import type { ModelKey, StreamEvent, Usage } from "./models";
 import { MODELS, modelOf } from "./models";
 
 const KEY_STORAGE = "together:api-key";
+const MODEL_STORAGE = "gloss:model-name";
 
 export function readApiKey(): string {
   try {
@@ -15,6 +16,44 @@ export function readApiKey(): string {
   } catch {
     return "";
   }
+}
+
+/** 浏览器里存的模型名（自定义 AI 服务下用）。设置页的密钥面板写入。 */
+export function readModelName(): string {
+  try {
+    return localStorage.getItem(MODEL_STORAGE) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function saveModelName(name: string) {
+  try {
+    const v = name.trim();
+    if (v) localStorage.setItem(MODEL_STORAGE, v);
+    else localStorage.removeItem(MODEL_STORAGE);
+    window.dispatchEvent(new Event("gloss:model"));
+  } catch {}
+}
+
+const BASE_STORAGE = "gloss:ai-base";
+
+/** 浏览器里存的请求地址（OpenAI 兼容服务）。设置页的密钥面板写入。 */
+export function readAiBase(): string {
+  try {
+    return localStorage.getItem(BASE_STORAGE) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function saveAiBase(url: string) {
+  try {
+    const v = url.trim();
+    if (v) localStorage.setItem(BASE_STORAGE, v);
+    else localStorage.removeItem(BASE_STORAGE);
+    window.dispatchEvent(new Event("gloss:aibase"));
+  } catch {}
 }
 
 const controllers = new Map<string, AbortController>();
@@ -63,7 +102,7 @@ async function stream(ix: DocIndex, glossId: string, modelKey: ModelKey) {
       headers: { "Content-Type": "application/json" },
       signal: ctrl.signal,
       body: JSON.stringify({
-        apiKey: apiKey || undefined,
+        apiKey: apiKey || undefined, modelName: readModelName() || undefined, baseUrl: readAiBase() || undefined,
         model: modelKey,
         length: st.settings.length,
         doc: docPayload(ix, g.anchor?.start.b ?? g.at),
@@ -190,7 +229,7 @@ export async function fetchBrief(ix: DocIndex) {
     const res = await fetch("/api/brief", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ apiKey: apiKey || undefined, model: modelKey, doc: docPayload(ix) }),
+      body: JSON.stringify({ apiKey: apiKey || undefined, modelName: readModelName() || undefined, baseUrl: readAiBase() || undefined, model: modelKey, doc: docPayload(ix) }),
     });
     noteFree(res);
     const j = (await res.json()) as { brief?: BriefData; usage?: Usage; error?: string; code?: string };
@@ -247,7 +286,7 @@ export async function streamAsk(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       signal,
-      body: JSON.stringify({ ...body, apiKey: apiKey || undefined, model: modelOf(useStore.getState().settings.model) }),
+      body: JSON.stringify({ ...body, apiKey: apiKey || undefined, modelName: readModelName() || undefined, baseUrl: readAiBase() || undefined, model: modelOf(useStore.getState().settings.model) }),
     });
     noteFree(res);
     if (!res.ok || !res.body) {

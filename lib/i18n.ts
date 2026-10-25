@@ -562,6 +562,8 @@ const en = {
 
   /* key menu */
   "key.title": "AI API key",
+  "key.modelLabel": "Model name (optional — for your own AI provider)",
+  "key.baseLabel": "Request URL (optional — an OpenAI-compatible service)",
   "key.hint": "Without one, answers are labelled demo output.",
   "key.placeholder": "Paste your key",
   "key.save": "Save",
@@ -1134,6 +1136,8 @@ const zh: Partial<Dict> = {
   "keys.shelfWalk": "在架上走动",
 
   "key.title": "AI API 密钥",
+  "key.modelLabel": "模型名称（可选——用自己的 AI 服务时填写）",
+  "key.baseLabel": "请求地址（可选——OpenAI 兼容服务）",
   "key.hint": "没有密钥时，答案会标记为演示输出。",
   "key.placeholder": "粘贴你的密钥",
   "key.save": "保存",

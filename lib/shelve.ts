@@ -26,7 +26,7 @@ Reply with JSON only: {"topic": "<key>", "tags": ["..."], "scene": "..."}`;
 
 export async function classify(
   input: ShelveInput,
-  opts: { apiKey?: string; signal?: AbortSignal } = {}
+  opts: { apiKey?: string; modelName?: string; baseUrl?: string; signal?: AbortSignal } = {}
 ): Promise<{ ok: true; shelving: Shelving; usd: number } | { ok: false; error: string }> {
   const lines = [
     `Title: ${input.title}`,
@@ -38,6 +38,8 @@ export async function classify(
   const r = await completeJSON<{ topic?: unknown; tags?: unknown; scene?: unknown }>({
     model: DEFAULT_MODEL,
     apiKey: opts.apiKey,
+    modelName: opts.modelName,
+    baseUrl: opts.baseUrl,
     signal: opts.signal,
     maxTokens: 220,
     messages: [

@@ -1,5 +1,5 @@
 import { BRIEF_TASK, systemFor, type DocPayload } from "@/lib/prompts";
-import { completeJSON, DEFAULT_MODEL, isModelKey } from "@/lib/together";
+import { completeJSON, DEFAULT_MODEL, isModelKey, usingCustomAI } from "@/lib/together";
 import { undash, type BriefData } from "@/lib/article";
 import { chargeFree, checkFree, estimateUsd, needKey } from "@/lib/quota";
 import { MODELS } from "@/lib/models";
@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export async function POST(req: Request) {
-  let body: { apiKey?: string; model?: string; doc?: DocPayload };
+  let body: { apiKey?: string; model?: string; modelName?: string; baseUrl?: string; doc?: DocPayload };
   try {
     body = await req.json();
   } catch {
@@ -23,15 +23,19 @@ export async function POST(req: Request) {
   // A gloss of the whole text spends from the same free allowance.
   let free: Awaited<ReturnType<typeof checkFree>> | null = null;
   if (!apiKey) {
-    if (!process.env.TOGETHER_API_KEY) return needKey(null);
-    free = await checkFree(req);
-    if (!free.ok) return needKey(free);
+    if (!usingCustomAI() && !process.env.TOGETHER_API_KEY) return needKey(null);
+    if (!usingCustomAI()) {
+      free = await checkFree(req);
+      if (!free.ok) return needKey(free);
+    }
   }
 
   const model = isModelKey(body.model) ? body.model : DEFAULT_MODEL;
   const result = await completeJSON<BriefData>({
     model,
     apiKey,
+    modelName: body.modelName,
+    baseUrl: body.baseUrl,
     signal: req.signal,
     // Thinking first: checking a text's headline figures against its own tables is arithmetic, and without it the
     // model repeats the abstract. About 10 s instead of 3 on a 14k-token paper, and half a cent more. The thinking

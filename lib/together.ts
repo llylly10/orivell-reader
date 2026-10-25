@@ -73,6 +73,8 @@ export async function* streamChat(req: {
   messages: ChatMessage[];
   model: ModelKey;
   apiKey?: string;
+  /** 浏览器「添加密钥」里存的请求地址（OpenAI 兼容服务）——优先于 AI_BASE_URL 环境变量 */
+  baseUrl?: string;
   /** 浏览器「添加密钥」里存的模型名——自定义通道下优先于 AI_MODEL 环境变量 */
   modelName?: string;
   maxTokens?: number;
@@ -84,15 +86,19 @@ export async function* streamChat(req: {
   toolChoice?: "auto" | "none";
 }): AsyncGenerator<StreamEvent> {
   const model: ModelEntry = MODELS[req.model];
-  // 配了自定义服务后，浏览器「添加密钥」里的 key 也发给自定义服务（key 存浏览器，
-  // 不落盘）；没有浏览器 key 才用服务端的 AI_API_KEY。访客密钥仅在没有自定义
-  // 服务时走 Together。
-  const custom = Boolean(CUSTOM_BASE);
+  // 自定义通道的三件套（地址/密钥/模型名）都可以来自浏览器「添加密钥」（存浏览器，
+  // 不落盘），回落到 AI_BASE_URL / AI_API_KEY / AI_MODEL 环境变量，最后才是 Together。
+  // 安全边界：浏览器指定地址时，只发浏览器里的 key——服务端密钥绝不发往浏览器选的地址。
+  const browserBase = req.baseUrl?.trim().replace(/\/+$/, "") ?? "";
+  const custom = Boolean(browserBase) || Boolean(CUSTOM_BASE);
   const provider = custom ? "your AI provider" : "Together";
-  const endpoint = custom ? chatEndpoint() : TOGETHER_URL;
-  const apiKey = custom
-    ? req.apiKey?.trim() || CUSTOM_KEY
-    : req.apiKey?.trim() || process.env.TOGETHER_API_KEY || "";
+  const base = browserBase || CUSTOM_BASE;
+  const endpoint = base.endsWith("/chat/completions") ? base : `${base}/chat/completions`;
+  const apiKey = browserBase
+    ? req.apiKey?.trim() || ""
+    : custom
+      ? req.apiKey?.trim() || CUSTOM_KEY
+      : req.apiKey?.trim() || process.env.TOGETHER_API_KEY || "";
   const modelId = custom ? req.modelName?.trim() || CUSTOM_MODEL || model.id : model.id;
   if (!apiKey && !custom) {
     yield {
@@ -203,6 +209,8 @@ export async function completeJSON<T>(req: {
   messages: ChatMessage[];
   model: ModelKey;
   apiKey?: string;
+  /** 浏览器「添加密钥」里存的请求地址（OpenAI 兼容服务）——优先于 AI_BASE_URL 环境变量 */
+  baseUrl?: string;
   /** 浏览器「添加密钥」里存的模型名——自定义通道下优先于 AI_MODEL 环境变量 */
   modelName?: string;
   maxTokens?: number;
@@ -211,11 +219,16 @@ export async function completeJSON<T>(req: {
   thinking?: boolean;
 }): Promise<{ ok: true; data: T; usage: Usage } | { ok: false; error: string }> {
   const model: ModelEntry = MODELS[req.model];
-  const custom = Boolean(CUSTOM_BASE);
+  const browserBase = req.baseUrl?.trim().replace(/\/+$/, "") ?? "";
+  const custom = Boolean(browserBase) || Boolean(CUSTOM_BASE);
   const provider = custom ? "your AI provider" : "Together";
-  const apiKey = custom
-    ? req.apiKey?.trim() || CUSTOM_KEY
-    : req.apiKey?.trim() || process.env.TOGETHER_API_KEY || "";
+  const base = browserBase || CUSTOM_BASE;
+  const endpoint = base.endsWith("/chat/completions") ? base : `${base}/chat/completions`;
+  const apiKey = browserBase
+    ? req.apiKey?.trim() || ""
+    : custom
+      ? req.apiKey?.trim() || CUSTOM_KEY
+      : req.apiKey?.trim() || process.env.TOGETHER_API_KEY || "";
   const modelId = custom ? req.modelName?.trim() || CUSTOM_MODEL || model.id : model.id;
   if (!apiKey && !custom) {
     return {
@@ -226,7 +239,7 @@ export async function completeJSON<T>(req: {
 
   let res: Response;
   try {
-    res = await fetch(chatEndpoint(), {
+    res = await fetch(endpoint, {
       method: "POST",
       signal: req.signal,
       headers: { "Content-Type": "application/json", ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}), "User-Agent": APP_UA },

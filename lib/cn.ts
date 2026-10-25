@@ -7,9 +7,37 @@
  * fetch path takes over.
  */
 
+import { existsSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { slugify, type Article, type Block } from "./article";
 
 const SIDECAR = process.env.GLOSS_CNSPIDER_URL || "http://127.0.0.1:8899";
+const SIDECAR_PY = "D:/shujia/MediaCrawler/.venv/Scripts/python.exe";
+const SIDECAR_PY_FILE = "D:/shujia/MediaCrawler/sidecar.py";
+const SIDECAR_DIR = "D:/shujia/MediaCrawler";
+
+let sidecarSpawned = false;
+
+/** Sidecar 随项目启动：没在跑就拉起一个（幂等），最多等 4 秒。拉不起来返回 false，
+    调用方走普通抓取路径。拉起的进程与 gloss 服务同生共死之外的存留也无妨——
+    它空闲时零开销，下次启动靠端口探测复用。 */
+async function ensureSidecar(): Promise<boolean> {
+  try {
+    const r = await fetch(`${SIDECAR}/status`, { signal: AbortSignal.timeout(1500) });
+    if (r.ok) return true;
+  } catch {}
+  if (sidecarSpawned || !existsSync(SIDECAR_PY) || !existsSync(SIDECAR_PY_FILE)) return false;
+  sidecarSpawned = true;
+  spawn(SIDECAR_PY, [SIDECAR_PY_FILE], { cwd: SIDECAR_DIR, detached: true, windowsHide: true, stdio: "ignore" }).unref();
+  for (let i = 0; i < 8; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    try {
+      const r = await fetch(`${SIDECAR}/status`, { signal: AbortSignal.timeout(1200) });
+      if (r.ok) return true;
+    } catch {}
+  }
+  return false;
+}
 
 const CN_PLATFORMS = /xiaohongshu\.com|xhslink\.com|douyin\.com|weibo\.com|m\.weibo\.cn|tieba\.baidu\.com|bilibili\.com|kuaishou\.com|zhihu\.com/;
 
@@ -28,6 +56,7 @@ type SidecarResult = { ok?: boolean; needsLogin?: boolean; platform?: string; er
 /** A card from the sidecar, or null when this URL isn't a CN platform / the sidecar couldn't help. */
 export async function cnCard(url: URL): Promise<Article | null> {
   if (!CN_PLATFORMS.test(url.hostname)) return null;
+  if (!(await ensureSidecar())) return null;
   let sidecar: SidecarResult | null = null;
   try {
     const res = await fetch(`${SIDECAR}/fetch`, {

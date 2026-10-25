@@ -29,6 +29,11 @@ function chatEndpoint(): string {
   return CUSTOM_BASE.endsWith("/chat/completions") ? CUSTOM_BASE : `${CUSTOM_BASE}/chat/completions`;
 }
 
+/** 自定义 AI 服务是否已配置（AI_BASE_URL）。路由用它决定 key/额度逻辑。 */
+export function usingCustomAI(): boolean {
+  return Boolean(CUSTOM_BASE);
+}
+
 import { MODELS, costFor, type ModelEntry, type ModelKey, type StreamEvent, type Usage } from "./models";
 
 export { MODELS, DEFAULT_MODEL, isModelKey, costFor } from "./models";
@@ -68,6 +73,8 @@ export async function* streamChat(req: {
   messages: ChatMessage[];
   model: ModelKey;
   apiKey?: string;
+  /** 浏览器「添加密钥」里存的模型名——自定义通道下优先于 AI_MODEL 环境变量 */
+  modelName?: string;
   maxTokens?: number;
   temperature?: number;
   signal?: AbortSignal;
@@ -77,23 +84,25 @@ export async function* streamChat(req: {
   toolChoice?: "auto" | "none";
 }): AsyncGenerator<StreamEvent> {
   const model: ModelEntry = MODELS[req.model];
-  const visitorKey = req.apiKey?.trim();
-  const custom = Boolean(CUSTOM_BASE) && !visitorKey;
+  // 配了自定义服务后，浏览器「添加密钥」里的 key 也发给自定义服务（key 存浏览器，
+  // 不落盘）；没有浏览器 key 才用服务端的 AI_API_KEY。访客密钥仅在没有自定义
+  // 服务时走 Together。
+  const custom = Boolean(CUSTOM_BASE);
   const provider = custom ? "your AI provider" : "Together";
   const endpoint = custom ? chatEndpoint() : TOGETHER_URL;
-  const apiKey = visitorKey || (custom ? CUSTOM_KEY : process.env.TOGETHER_API_KEY) || "";
-  const modelId = custom && CUSTOM_MODEL ? CUSTOM_MODEL : model.id;
-  if (!apiKey) {
+  const apiKey = custom
+    ? req.apiKey?.trim() || CUSTOM_KEY
+    : req.apiKey?.trim() || process.env.TOGETHER_API_KEY || "";
+  const modelId = custom ? req.modelName?.trim() || CUSTOM_MODEL || model.id : model.id;
+  if (!apiKey && !custom) {
     yield {
       type: "error",
-      text: custom
-        ? "No AI_API_KEY set for your AI provider."
-        : "No Together API key. Set TOGETHER_API_KEY, or add your own key.",
+      text: "No Together API key. Set TOGETHER_API_KEY, or add your own key.",
     };
     return;
   }
 
-  yield { type: "meta", model: custom && CUSTOM_MODEL ? CUSTOM_MODEL : model.label };
+  yield { type: "meta", model: custom ? modelId : model.label };
 
   let res: Response;
   try {
@@ -194,21 +203,24 @@ export async function completeJSON<T>(req: {
   messages: ChatMessage[];
   model: ModelKey;
   apiKey?: string;
+  /** 浏览器「添加密钥」里存的模型名——自定义通道下优先于 AI_MODEL 环境变量 */
+  modelName?: string;
   maxTokens?: number;
   signal?: AbortSignal;
   /** Let the model reason before it answers, for checking a text against itself. Its thinking spends from maxTokens. */
   thinking?: boolean;
 }): Promise<{ ok: true; data: T; usage: Usage } | { ok: false; error: string }> {
   const model: ModelEntry = MODELS[req.model];
-  const visitorKey = req.apiKey?.trim();
-  const custom = Boolean(CUSTOM_BASE) && !visitorKey;
+  const custom = Boolean(CUSTOM_BASE);
   const provider = custom ? "your AI provider" : "Together";
-  const apiKey = visitorKey || (custom ? CUSTOM_KEY : process.env.TOGETHER_API_KEY) || "";
-  const modelId = custom && CUSTOM_MODEL ? CUSTOM_MODEL : model.id;
-  if (!apiKey) {
+  const apiKey = custom
+    ? req.apiKey?.trim() || CUSTOM_KEY
+    : req.apiKey?.trim() || process.env.TOGETHER_API_KEY || "";
+  const modelId = custom ? req.modelName?.trim() || CUSTOM_MODEL || model.id : model.id;
+  if (!apiKey && !custom) {
     return {
       ok: false,
-      error: custom ? "No AI_API_KEY set for your AI provider." : "No Together API key. Set TOGETHER_API_KEY, or add your own key.",
+      error: "No Together API key. Set TOGETHER_API_KEY, or add your own key.",
     };
   }
 

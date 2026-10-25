@@ -561,7 +561,7 @@ const en = {
   "keys.shelfWalk": "Walk the shelf",
 
   /* key menu */
-  "key.title": "Together API key",
+  "key.title": "AI API key",
   "key.hint": "Without one, answers are labelled demo output.",
   "key.placeholder": "Paste your key",
   "key.save": "Save",
@@ -1133,7 +1133,7 @@ const zh: Partial<Dict> = {
   "keys.editorNote": "关闭并保留原名",
   "keys.shelfWalk": "在架上走动",
 
-  "key.title": "Together API 密钥",
+  "key.title": "AI API 密钥",
   "key.hint": "没有密钥时，答案会标记为演示输出。",
   "key.placeholder": "粘贴你的密钥",
   "key.save": "保存",

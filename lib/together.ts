@@ -12,6 +12,23 @@
 export const TOGETHER_URL = "https://api.together.xyz/v1/chat/completions";
 export const APP_UA = "Gloss/0.1";
 
+/**
+ * 自定义 OpenAI 兼容通道：设了 AI_BASE_URL 就把全部请求路由到自己的模型服务，
+ * 不再走 Together。各家都兼容这个协议：
+ *   GLM      https://open.bigmodel.cn/api/paas/v4        （配 AI_API_KEY + AI_MODEL=glm-4.7-flash 等）
+ *   DeepSeek https://api.deepseek.com/v1
+ *   Qwen     https://dashscope.aliyuncs.com/compatible-mode/v1
+ *   本地     http://127.0.0.1:11434/v1（ollama）等
+ * 访客自贴的 key 是 Together 的 key，仍走 Together。
+ */
+const CUSTOM_BASE = process.env.AI_BASE_URL?.trim().replace(/\/+$/, "") ?? "";
+const CUSTOM_KEY = process.env.AI_API_KEY?.trim() ?? "";
+const CUSTOM_MODEL = process.env.AI_MODEL?.trim() ?? "";
+
+function chatEndpoint(): string {
+  return CUSTOM_BASE.endsWith("/chat/completions") ? CUSTOM_BASE : `${CUSTOM_BASE}/chat/completions`;
+}
+
 import { MODELS, costFor, type ModelEntry, type ModelKey, type StreamEvent, type Usage } from "./models";
 
 export { MODELS, DEFAULT_MODEL, isModelKey, costFor } from "./models";
@@ -32,7 +49,7 @@ type Chunk = {
   };
 };
 
-function errorMessage(status: number, body: string): string {
+function errorMessage(status: number, body: string, provider = "Together"): string {
   let msg = body.slice(0, 280);
   try {
     const j = JSON.parse(body) as { error?: { message?: string } | string; message?: string };
@@ -42,9 +59,9 @@ function errorMessage(status: number, body: string): string {
   } catch {
     /* not JSON */
   }
-  if (status === 401) return "Together rejected that API key. Check it and try again.";
-  if (status === 429) return "Together is rate limiting this key. Wait a moment, or use your own key.";
-  return `Together API ${status}: ${msg}`;
+  if (status === 401) return `${provider} rejected that API key. Check it and try again.`;
+  if (status === 429) return `${provider} is rate limiting this key. Wait a moment, or use your own key.`;
+  return `${provider} API ${status}: ${msg}`;
 }
 
 export async function* streamChat(req: {
@@ -60,43 +77,54 @@ export async function* streamChat(req: {
   toolChoice?: "auto" | "none";
 }): AsyncGenerator<StreamEvent> {
   const model: ModelEntry = MODELS[req.model];
-  const apiKey = req.apiKey?.trim() || process.env.TOGETHER_API_KEY;
+  const visitorKey = req.apiKey?.trim();
+  const custom = Boolean(CUSTOM_BASE) && !visitorKey;
+  const provider = custom ? "your AI provider" : "Together";
+  const endpoint = custom ? chatEndpoint() : TOGETHER_URL;
+  const apiKey = visitorKey || (custom ? CUSTOM_KEY : process.env.TOGETHER_API_KEY) || "";
+  const modelId = custom && CUSTOM_MODEL ? CUSTOM_MODEL : model.id;
   if (!apiKey) {
-    yield { type: "error", text: "No Together API key. Set TOGETHER_API_KEY, or add your own key." };
+    yield {
+      type: "error",
+      text: custom
+        ? "No AI_API_KEY set for your AI provider."
+        : "No Together API key. Set TOGETHER_API_KEY, or add your own key.",
+    };
     return;
   }
 
-  yield { type: "meta", model: model.label };
+  yield { type: "meta", model: custom && CUSTOM_MODEL ? CUSTOM_MODEL : model.label };
 
   let res: Response;
   try {
-    res = await fetch(TOGETHER_URL, {
+    res = await fetch(endpoint, {
       method: "POST",
       signal: req.signal,
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         "User-Agent": APP_UA,
       },
       body: JSON.stringify({
-        model: model.id,
+        model: modelId,
         stream: true,
         stream_options: { include_usage: true },
         temperature: req.temperature ?? 0.4,
         max_tokens: req.maxTokens ?? 900,
-        chat_template_kwargs: { enable_thinking: false },
+        // Together 的思考开关是私有扩展，别的兼容服务可能拒收未知字段
+        ...(custom ? {} : { chat_template_kwargs: { enable_thinking: false } }),
         messages: req.messages,
         ...(req.tools ? { tools: req.tools, tool_choice: req.toolChoice ?? "auto" } : {}),
       }),
     });
   } catch (e) {
     if (req.signal?.aborted) return;
-    yield { type: "error", text: `Could not reach Together: ${String(e)}` };
+    yield { type: "error", text: `Could not reach ${provider}: ${String(e)}` };
     return;
   }
 
   if (!res.ok || !res.body) {
-    yield { type: "error", text: errorMessage(res.status, await res.text().catch(() => "")) };
+    yield { type: "error", text: errorMessage(res.status, await res.text().catch(() => ""), provider) };
     return;
   }
 
@@ -152,7 +180,8 @@ export async function* streamChat(req: {
         const ct = chunk.usage.completion_tokens ?? 0;
         yield {
           type: "usage",
-          usage: { promptTokens: pt, cachedTokens: cached, completionTokens: ct, costUsd: costFor(req.model, pt, cached, ct) },
+          // 自定义通道的计价随服务商而定，先记 0；token 数仍是真实的
+          usage: { promptTokens: pt, cachedTokens: cached, completionTokens: ct, costUsd: custom ? 0 : costFor(req.model, pt, cached, ct) },
         };
       }
     }
@@ -171,29 +200,38 @@ export async function completeJSON<T>(req: {
   thinking?: boolean;
 }): Promise<{ ok: true; data: T; usage: Usage } | { ok: false; error: string }> {
   const model: ModelEntry = MODELS[req.model];
-  const apiKey = req.apiKey?.trim() || process.env.TOGETHER_API_KEY;
-  if (!apiKey) return { ok: false, error: "No Together API key. Set TOGETHER_API_KEY, or add your own key." };
+  const visitorKey = req.apiKey?.trim();
+  const custom = Boolean(CUSTOM_BASE) && !visitorKey;
+  const provider = custom ? "your AI provider" : "Together";
+  const apiKey = visitorKey || (custom ? CUSTOM_KEY : process.env.TOGETHER_API_KEY) || "";
+  const modelId = custom && CUSTOM_MODEL ? CUSTOM_MODEL : model.id;
+  if (!apiKey) {
+    return {
+      ok: false,
+      error: custom ? "No AI_API_KEY set for your AI provider." : "No Together API key. Set TOGETHER_API_KEY, or add your own key.",
+    };
+  }
 
   let res: Response;
   try {
-    res = await fetch(TOGETHER_URL, {
+    res = await fetch(chatEndpoint(), {
       method: "POST",
       signal: req.signal,
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}`, "User-Agent": APP_UA },
+      headers: { "Content-Type": "application/json", ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}), "User-Agent": APP_UA },
       body: JSON.stringify({
-        model: model.id,
+        model: modelId,
         temperature: 0.3,
         max_tokens: req.maxTokens ?? 1400,
-        chat_template_kwargs: { enable_thinking: Boolean(req.thinking) },
+        ...(custom ? {} : { chat_template_kwargs: { enable_thinking: Boolean(req.thinking) } }),
         response_format: { type: "json_object" },
         messages: req.messages,
       }),
     });
   } catch (e) {
-    return { ok: false, error: `Could not reach Together: ${String(e)}` };
+    return { ok: false, error: `Could not reach ${provider}: ${String(e)}` };
   }
   const body = await res.text();
-  if (!res.ok) return { ok: false, error: errorMessage(res.status, body) };
+  if (!res.ok) return { ok: false, error: errorMessage(res.status, body, provider) };
 
   try {
     const j = JSON.parse(body) as {
@@ -206,7 +244,7 @@ export async function completeJSON<T>(req: {
     const pt = j.usage?.prompt_tokens ?? 0;
     const cached = j.usage?.prompt_tokens_details?.cached_tokens ?? 0;
     const ct = j.usage?.completion_tokens ?? 0;
-    return { ok: true, data, usage: { promptTokens: pt, cachedTokens: cached, completionTokens: ct, costUsd: costFor(req.model, pt, cached, ct) } };
+    return { ok: true, data, usage: { promptTokens: pt, cachedTokens: cached, completionTokens: ct, costUsd: custom ? 0 : costFor(req.model, pt, cached, ct) } };
   } catch {
     return { ok: false, error: "The model returned something that was not valid JSON. Try again." };
   }

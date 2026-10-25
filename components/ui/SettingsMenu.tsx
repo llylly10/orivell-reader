@@ -163,6 +163,8 @@ const CN_PLATFORMS: [string, string][] = [
   ["zh", "知乎"],
 ];
 
+const CN_COLORS = ["#ff2442", "#e6162d", "#161823", "#3388ff", "#fb7299", "#ff4906", "#0084ff"];
+
 /** 国内平台登录态：扫码二维码内嵌在这里（sidecar 截图流），也可改为弹出浏览器窗口。 */
 function CnAccounts() {
   const t = useT();
@@ -210,7 +212,7 @@ function CnAccounts() {
       const r = await fetch("/api/cn-qr", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ platform: p }) });
       const j = await r.json();
       if (j.ok) setQr({ platform: p, img: null });
-      else setErr(j.error ?? t("cn.failed"));
+      else setErr(j.error?.includes("正在进行") ? t("cn.busy") : j.error ?? t("cn.failed"));
     } catch {
       setErr(t("cn.failed"));
     }
@@ -231,48 +233,56 @@ function CnAccounts() {
   return (
     <div className="space-y-3">
       <p className="text-[12px] leading-snug text-ink-3">{t("cn.blurb")}</p>
-      {!sidecar && <p className="text-[12px] text-ink-3">{t("cn.sidecarDown")}</p>}
+      {!sidecar && <p className="rounded-[8px] bg-[var(--bg-raised)] px-2.5 py-1.5 text-[12px] text-ink-3">{t("cn.sidecarDown")}</p>}
       {qr && (
-        <div className="rounded-[10px] border border-rule p-2.5">
-          <p className="mb-2 text-[12px] text-ink-2">
-            {t("cn.waiting")} · {CN_PLATFORMS.find(([k]) => k === qr.platform)?.[1]}
-          </p>
-          <div className="grid min-h-[160px] place-items-center overflow-hidden rounded-[8px] bg-white">
-            {qr.img ? <img src={`data:image/jpeg;base64,${qr.img}`} alt="" className="w-full" /> : <span className="p-6 text-[12px] text-ink-3">…</span>}
-          </div>
-          <div className="mt-2 flex items-center justify-between">
-            <span className="text-[11px] text-ink-3">{t("cn.qrTip")}</span>
-            <button type="button" onClick={() => stopQr(qr.platform)} className="text-[12px] text-ink-3 transition-colors hover:text-ink">
-              {t("cn.cancel")}
+        <div className="overflow-hidden rounded-[12px] border border-rule bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-rule px-3 py-2">
+            <span className="text-[12px] font-medium text-ink">
+              {CN_PLATFORMS.find(([k]) => k === qr.platform)?.[1]} · {t("cn.waiting")}
+            </span>
+            <button type="button" onClick={() => stopQr(qr.platform)} className="text-[13px] leading-none text-ink-3 transition-colors hover:text-ink" aria-label={t("cn.cancel")}>
+              ✕
             </button>
           </div>
+          <div className="relative grid min-h-[210px] place-items-center bg-white">
+            {qr.img ? (
+              <img src={`data:image/jpeg;base64,${qr.img}`} alt="" className="w-full" />
+            ) : (
+              <span className="size-5 animate-spin rounded-full border-2 border-rule border-t-ink-3" />
+            )}
+          </div>
+          <p className="px-3 py-2 text-[11px] leading-snug text-ink-3">{t("cn.qrTip")}</p>
         </div>
       )}
-      <div className="space-y-1">
-        {CN_PLATFORMS.map(([key, name]) => {
+      <div className="space-y-0.5">
+        {CN_PLATFORMS.map(([key, name], i) => {
           const on = states?.[key] === true;
           return (
-            <div key={key} className="flex items-center justify-between rounded-[8px] px-2 py-1.5 transition-colors hover:bg-[var(--bg-raised)]">
-              <span className="flex items-center gap-2 text-[13px] text-ink">
-                <span className={`size-1.5 rounded-full ${on ? "bg-[#3ba776]" : "bg-[var(--rule-strong)]"}`} />
-                {name}
-                <span className="text-[11px] text-ink-3">{on ? t("cn.loggedIn") : t("cn.notLoggedIn")}</span>
+            <div key={key} className="flex items-center gap-2.5 rounded-[10px] px-1.5 py-1.5 transition-colors hover:bg-[var(--bg-raised)]">
+              <span className="grid size-7 shrink-0 place-items-center rounded-[8px] text-[12px] font-semibold text-white" style={{ background: CN_COLORS[i] }}>
+                {name[0]}
               </span>
-              {!on && (
-                <span className="flex items-center gap-3">
-                  <button type="button" onClick={() => startQr(key)} className="text-[12px] text-ink-2 transition-colors hover:text-ink">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] leading-tight text-ink">{name}</span>
+                <span className={`text-[11px] leading-tight ${on ? "text-[#3ba776]" : "text-ink-4"}`}>{on ? `✓ ${t("cn.loggedIn")}` : t("cn.notLoggedIn")}</span>
+              </span>
+              {!on ? (
+                <span className="flex shrink-0 items-center gap-1.5">
+                  <button type="button" onClick={() => startQr(key)} className="rounded-full border border-rule px-3 py-1 text-[12px] text-ink transition-colors hover:border-ink-3 hover:bg-[var(--bg-raised)]">
                     {t("cn.login")}
                   </button>
-                  <button type="button" onClick={() => startPopup(key)} data-tip={t("cn.popupLogin")} className="text-[12px] text-ink-3 transition-colors hover:text-ink">
+                  <button type="button" onClick={() => startPopup(key)} data-tip={t("cn.popupLogin")} className="rounded-full px-1.5 py-1 text-[12px] text-ink-3 transition-colors hover:text-ink">
                     {t("cn.popupLogin")}
                   </button>
                 </span>
+              ) : (
+                <span className="rounded-full bg-[#3ba776]/15 px-2.5 py-1 text-[11px] font-medium text-[#3ba776]">✓ {t("cn.loggedIn")}</span>
               )}
             </div>
           );
         })}
       </div>
-      {err && <p className="text-[12px] text-[var(--danger, #c0392b)]">{err}</p>}
+      {err && <p className="text-[12px] leading-snug text-[#c0392b]">{err}</p>}
     </div>
   );
 }

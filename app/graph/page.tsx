@@ -161,10 +161,11 @@ export default function GraphPage() {
 
   const onMove = (e: React.MouseEvent) => {
     if (!layout) return;
-    if (dragRef.current) {
-      const dx = e.clientX - dragRef.current.x;
-      const dy = e.clientY - dragRef.current.y;
-      setView((v) => ({ ...v, ox: dragRef.current!.ox + dx, oy: dragRef.current!.oy + dy }));
+    const drag = dragRef.current;
+    if (drag) {
+      const dx = e.clientX - drag.x;
+      const dy = e.clientY - drag.y;
+      setView((v) => ({ ...v, ox: drag.ox + dx, oy: drag.oy + dy }));
       return;
     }
     const p = toWorld(e.clientX, e.clientY);

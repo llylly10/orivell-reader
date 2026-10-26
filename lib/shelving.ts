@@ -8,7 +8,7 @@
  */
 
 import type { Article } from "./article";
-import { readApiKey } from "./ask";
+import { readAiBase, readApiKey, readModelName } from "./ask";
 import type { Shelving } from "./library";
 import { excerptOf } from "./excerpt";
 import { customShelvesSnapshot } from "./library-prefs";
@@ -27,7 +27,17 @@ export async function shelveText(a: Text): Promise<void> {
     const res = await fetch("/api/shelve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: a.title, author: a.author, source: a.source, dek: a.dek, excerpt: a.blocks ? excerptOf(a.blocks) : undefined, shelves: customShelvesSnapshot(), apiKey: readApiKey() || undefined }),
+      body: JSON.stringify({
+        title: a.title,
+        author: a.author,
+        source: a.source,
+        dek: a.dek,
+        excerpt: a.blocks ? excerptOf(a.blocks) : undefined,
+        shelves: customShelvesSnapshot(),
+        apiKey: readApiKey() || undefined,
+        baseUrl: readAiBase() || undefined,
+        modelName: readModelName() || undefined,
+      }),
     });
     if (res.status === 429 || res.status === 401) {
       const j = (await res.json().catch(() => ({}))) as { code?: string };
@@ -66,6 +76,33 @@ export async function backfill(items: LibraryItem[], limit = 40): Promise<void> 
       }
     };
     await Promise.all([next(), next()]);
+  } finally {
+    backfilling = false;
+  }
+}
+
+/** One-off bulk sort for the settings panel: everything unsorted, no visit cap.
+ *  Reports (done, total); returns false if it stopped for want of a key. */
+export async function sortAll(onProgress?: (done: number, total: number) => void): Promise<boolean> {
+  if (backfilling) return false;
+  const todo = useStore.getState().library.filter((x) => !x.topic && x.origin !== "sample");
+  const total = todo.length;
+  let done = 0;
+  onProgress?.(0, total);
+  if (!total) return true;
+  backfilling = true;
+  try {
+    const next = async () => {
+      for (let x = todo.shift(); x && !resting; x = todo.shift()) {
+        const doc = await loadDoc(x.id).catch(() => null);
+        await shelveText(doc ?? { id: x.id, title: x.title, author: x.author, source: x.source, dek: x.dek });
+        done++;
+        onProgress?.(done, total);
+        await new Promise((r) => setTimeout(r, 250));
+      }
+    };
+    await Promise.all([next(), next()]);
+    return !resting;
   } finally {
     backfilling = false;
   }

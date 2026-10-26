@@ -446,6 +446,55 @@ function SemanticIndex() {
   );
 }
 
+/** 自动归类：把书架上所有未分类的书交给你的模型分拣（topic/tags/封面场景）。 */
+function AutoShelve() {
+  const t = useT();
+  const unsorted = useStore((s) => s.library.filter((x) => !x.topic && x.origin !== "sample").length);
+  const total = useStore((s) => s.library.length);
+  const [running, setRunning] = useState(false);
+  const [prog, setProg] = useState<{ done: number; total: number } | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const run = async () => {
+    if (running) return;
+    setRunning(true);
+    setMsg(null);
+    try {
+      const { sortAll } = await import("@/lib/shelving");
+      const ok = await sortAll((done, tot) => setProg({ done, total: tot }));
+      setMsg(ok ? t("sort.done") : t("sort.needKey"));
+    } catch {
+      setMsg(t("sort.failed"));
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const pct = prog?.total ? Math.round((prog.done / prog.total) * 100) : 0;
+  return (
+    <div className="rounded-[10px] border border-rule p-2.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[13px] font-medium text-ink">{t("sort.title")}</span>
+        <button type="button" onClick={run} disabled={running || !unsorted} className="rounded-full border border-rule px-3 py-1 text-[12px] text-ink transition-colors hover:border-ink-3 hover:bg-[var(--bg-raised)] disabled:opacity-40">
+          {running ? t("sort.running") : t("sort.run")}
+        </button>
+      </div>
+      <p className="mt-1.5 text-[11.5px] leading-snug text-ink-3">
+        {unsorted ? t("sort.unsortedOf", { n: String(unsorted), total: String(total) }) : t("sort.allSorted")}
+      </p>
+      {prog && prog.total > 0 && (
+        <div className="mt-2">
+          <span className="block h-[3px] overflow-hidden rounded-full bg-rule" aria-hidden>
+            <span className="block h-full rounded-full bg-[var(--rubric)] transition-[width] duration-500" style={{ width: `${pct}%` }} />
+          </span>
+        </div>
+      )}
+      {running && prog && <p className="mt-1.5 text-[11.5px] tabular-nums text-ink-3">{t("sort.progress", { done: String(prog.done), total: String(prog.total) })}</p>}
+      {msg && <p className="mt-1.5 text-[11.5px] leading-snug text-ink-3">{msg}</p>}
+    </div>
+  );
+}
+
 /** 重复项审查：列出候选组（含模糊变体），LLM 判定辅助，人工决定保留哪篇。 */
 function Duplicates() {
   const t = useT();
@@ -860,6 +909,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
           {tab === "cn" && (
             <div className="space-y-4">
               <XSync />
+              <AutoShelve />
               <SemanticIndex />
               <CnAccounts />
               <VisionOcr />

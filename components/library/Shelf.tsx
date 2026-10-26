@@ -141,6 +141,8 @@ export function Shelf({
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [entering, setEntering] = useState(true);
+  // 只挂载可视行及其缓冲的书脊——书架 150 行、1500+ 个书脊，全部挂载是打开卡顿的主因。
+  const [rowsOnScreen, setRowsOnScreen] = useState<[number, number]>([0, 40]);
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -152,6 +154,33 @@ export function Shelf({
     return () => {
       ro.disconnect();
       clearTimeout(t);
+    };
+  }, []);
+
+  // 滚动时计算可视行窗口（capture 捕获任何滚动容器的滚动事件）。
+  // 只在窗口真正变化时 setState，滚动过程中不产生多余渲染。
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let raf = 0;
+    const measure = () => {
+      const top = el.getBoundingClientRect().top;
+      const h = window.innerHeight || 800;
+      const first = Math.max(0, Math.floor(-top / PITCH) - 2);
+      const last = Math.ceil((h - top) / PITCH) + 2;
+      setRowsOnScreen((cur) => (cur[0] === first && cur[1] === last ? cur : [first, last]));
+    };
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(measure);
+    };
+    measure();
+    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll, { capture: true } as EventListenerOptions);
+      window.removeEventListener("resize", onScroll);
+      cancelAnimationFrame(raf);
     };
   }, []);
 
@@ -241,7 +270,7 @@ export function Shelf({
         <span style={{ background: "#a43848", width: 156, marginLeft: 3 }} />
       </div>
 
-      {width > 0 && placed.map(({ b, at, out, jump }) => {
+      {width > 0 && placed.filter(({ at }) => at.row >= rowsOnScreen[0] && at.row <= rowsOnScreen[1]).map(({ b, at, out, jump }) => {
         const look = lookOf(b);
         const i = order.get(b.id) ?? 0;
         return (

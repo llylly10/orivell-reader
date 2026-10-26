@@ -28,7 +28,7 @@ export type PlatformColors = Record<string, string>;
 const EDGE_STYLE: Record<GraphEdge["k"], { color: string; alpha: number }> = {
   quote: { color: "#b3543e", alpha: 0.55 },
   entity: { color: "#6b7f5e", alpha: 0.4 },
-  author: { color: "#8a8474", alpha: 0.14 },
+  author: { color: "#8a8474", alpha: 0.3 },
 };
 
 /** 网格化斥力：只和邻近格里的节点算斥力，2180 节点也能实时收敛 */
@@ -72,18 +72,12 @@ export function computeLayout(nodes: SimNode[], edges: GraphEdge[], tick = 220, 
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const W = 2400;
   const H = 1600;
-  // 初始：按节点类型分环摆好（各环内均匀取角），避免全从原点爆开
-  const totals: Record<string, number> = { a: 0, au: 0, e: 0 };
-  for (const n of nodes) totals[n.k]++;
-  const ringOf: Record<string, number> = { a: 0, au: 1, e: 2 };
-  const radiusOf: Record<string, number> = { a: 620, au: 380, e: 500 };
-  const seen: Record<string, number> = { a: 0, au: 0, e: 0 };
+  // 初始：圆盘内随机撒点（比环形初始化收敛得好——不会留下环残影）
   for (const n of nodes) {
-    const angle = (seen[n.k] / Math.max(1, totals[n.k])) * Math.PI * 2 + ringOf[n.k] * 2.1;
-    seen[n.k]++;
-    const r = radiusOf[n.k];
-    n.x = W / 2 + Math.cos(angle) * r + (Math.random() - 0.5) * 60;
-    n.y = H / 2 + Math.sin(angle) * r + (Math.random() - 0.5) * 60;
+    const angle = Math.random() * Math.PI * 2;
+    const r = Math.sqrt(Math.random()) * 640;
+    n.x = W / 2 + Math.cos(angle) * r;
+    n.y = H / 2 + Math.sin(angle) * r;
   }
   const adj = new Map<string, { other: SimNode; k: GraphEdge["k"] }[]>();
   for (const e of edges) {
@@ -112,8 +106,8 @@ export function computeLayout(nodes: SimNode[], edges: GraphEdge[], tick = 220, 
       b.vy -= dy * f;
     }
     for (const n of nodes) {
-      n.vx += (W / 2 - n.x) * 0.0016;
-      n.vy += (H / 2 - n.y) * 0.0016;
+      n.vx += (W / 2 - n.x) * 0.003;
+      n.vy += (H / 2 - n.y) * 0.003;
       n.vx *= 0.86;
       n.vy *= 0.86;
       n.x += Math.max(-24, Math.min(24, n.vx));

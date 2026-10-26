@@ -49,6 +49,18 @@ export default function GraphPage() {
   const [communityMode, setCommunityMode] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [extractMsg, setExtractMsg] = useState<string | null>(null);
+  const fitView = useCallback((nodes: SimNode[]) => {
+    const wrap = wrapRef.current;
+    if (!nodes.length || !wrap) return;
+    const xs = nodes.map((n) => n.x);
+    const ys = nodes.map((n) => n.y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const w = Math.max(200, maxX - minX + 160);
+    const h = Math.max(200, maxY - minY + 160);
+    const scale = Math.min(2, Math.min(wrap.clientWidth / w, wrap.clientHeight / h));
+    setView({ scale, ox: wrap.clientWidth / 2 - ((minX + maxX) / 2) * scale, oy: wrap.clientHeight / 2 - ((minY + maxY) / 2) * scale });
+  }, []);
   const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
 
   const load = useCallback(() => {
@@ -82,12 +94,14 @@ export default function GraphPage() {
       }
       const { adj, byId } = computeLayout(simNodes, data.edges, 0);
       setLayout({ nodes: simNodes, byId, edges: data.edges, adj });
+      fitView(simNodes);
       setProgress(1);
     } else {
       setProgress(0);
       const id = requestAnimationFrame(() => {
         const { adj, byId } = computeLayout(simNodes, data.edges, 220, (p) => setProgress(p));
         setLayout({ nodes: simNodes, byId, edges: data.edges, adj });
+        fitView(simNodes);
         try {
           const pos: Record<string, [number, number]> = {};
           for (const n of simNodes) pos[n.id] = [Math.round(n.x), Math.round(n.y)];

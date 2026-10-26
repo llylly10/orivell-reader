@@ -43,7 +43,7 @@ export default function GraphPage() {
   const [selected, setSelected] = useState<SimNode | null>(null);
   const [show, setShow] = useState(SHOW_DEFAULT);
   const [kinds, setKinds] = useState({ a: true, au: true, e: true });
-  const [minDeg, setMinDeg] = useState(1);
+  const [minDeg, setMinDeg] = useState(0);
   const [query, setQuery] = useState("");
   const [egoId, setEgoId] = useState<string | null>(null);
   const [communityMode, setCommunityMode] = useState(false);
@@ -305,7 +305,7 @@ export default function GraphPage() {
         {chip(communityMode, t("graph.community"), () => setCommunityMode((v) => !v))}
         <label className="flex items-center gap-1.5 text-[12px] text-ink-3">
           {t("graph.minDegree")}
-          <input type="range" min={1} max={8} value={minDeg} onChange={(e) => setMinDeg(Number(e.target.value))} className="h-1 w-16 accent-[var(--rubric)]" aria-label={t("graph.minDegree")} />
+          <input type="range" min={0} max={8} value={minDeg} onChange={(e) => setMinDeg(Number(e.target.value))} className="h-1 w-16 accent-[var(--rubric)]" aria-label={t("graph.minDegree")} />
           <span className="w-3 tabular-nums">{minDeg}</span>
         </label>
         <span className="ml-auto flex items-center gap-2">

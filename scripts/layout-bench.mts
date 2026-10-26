@@ -1,5 +1,5 @@
 /** 图谱布局基准：真实库数据跑一遍力导向，确认规模下收敛与耗时。 */
-import { computeLayout } from "../components/graph/graph-engine.ts";
+import { computeTopicLayout } from "../components/graph/graph-engine.ts";
 import { neon } from "@neondatabase/serverless";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -30,7 +30,7 @@ for (const r of quotes) {
   if (!eq.has(k)) { eq.add(k); edges.push({ s: String(r.src), t: String(r.dst), k: "quote" as const }); }
 }
 const t0 = Date.now();
-const { adj } = computeLayout(nodes, edges, 220);
+const { adj } = computeTopicLayout(nodes, edges, 240);
 console.log(`布局收敛: ${nodes.length} 节点 / ${edges.length} 边，耗时 ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 const hubs = nodes.filter((n) => n.k === "au").sort((a, b) => b.deg - a.deg).slice(0, 3).map((n) => `${n.t}(${n.deg})`);
 console.log("作者枢纽:", hubs.join(" | "));

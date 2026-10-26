@@ -147,6 +147,8 @@ export function drawGraph(
     show: { quote: boolean; author: boolean; entity: boolean };
     /** 社群模式：给节点按社区上色（Louvain 划分），覆盖主题色 */
     community?: Map<string, number>;
+    /** 全部节点显示标签（实体目录模式用） */
+    labelsAll?: boolean;
     /** 画布底色（标签底衬用它） */
     ground?: string;
   },
@@ -209,7 +211,7 @@ export function drawGraph(
   // 标签：悬停/选中节点，和度数最高的枢纽
   ctx.textAlign = "center";
   for (const n of nodes) {
-    const show = n === opts.hovered || n === opts.selected || (n.k !== "a" && n.deg >= 6) || (n.k === "a" && n.deg >= 9);
+    const show = opts.labelsAll || n === opts.hovered || n === opts.selected || (n.k !== "a" && n.deg >= 6) || (n.k === "a" && n.deg >= 9);
     if (!show) continue;
     const label = n.t.slice(0, 26);
     ctx.font = `${n.k === "a" ? 11 : 12.5}px sans-serif`;
@@ -233,4 +235,109 @@ export function hitTest(nodes: SimNode[], mx: number, my: number, scale: number)
     }
   }
   return best;
+}
+
+/** 按主题聚簇的布局：文章被吸到各自主题的重心，24 个主题形成明显分开的星团。
+ *  作者/实体节点靠边弹簧自然附着到它们连接的文章附近。 */
+export function computeTopicLayout(nodes: SimNode[], edges: GraphEdge[], tick = 240, onProgress?: (p: number) => void) {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const W = 3200;
+  const H = 2100;
+  // 主题重心排成宽椭圆环，保证星团之间有大片空隙
+  const topics = new Map<string, { x: number; y: number }>();
+  const topicIds = [...new Set(nodes.filter((n) => n.k === "a").map((n) => n.s ?? "unsorted"))];
+  topicIds.forEach((tp, i) => {
+    const a = (i / topicIds.length) * Math.PI * 2;
+    topics.set(tp, { x: W / 2 + Math.cos(a) * 1050, y: H / 2 + Math.sin(a) * 720 });
+  });
+  for (const n of nodes) {
+    if (n.k === "a") {
+      const c = topics.get(n.s ?? "unsorted") ?? { x: W / 2, y: H / 2 };
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.sqrt(Math.random()) * 160;
+      n.x = c.x + Math.cos(a) * r;
+      n.y = c.y + Math.sin(a) * r;
+    } else {
+      const a = Math.random() * Math.PI * 2;
+      n.x = W / 2 + Math.cos(a) * 520;
+      n.y = H / 2 + Math.sin(a) * 380;
+    }
+  }
+  const adj = buildAdjacency(nodes, edges);
+  for (let i = 0; i < tick; i++) {
+    const cool = 1 - i / tick;
+    repulsionTick(nodes, 70, 1500 * cool);
+    for (const e of edges) {
+      const a = byId.get(e.s);
+      const b = byId.get(e.t);
+      if (!a || !b) continue;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const d = Math.sqrt(dx * dx + dy * dy) || 1;
+      const f = ((d - 80) / d) * 0.012;
+      a.vx += dx * f;
+      a.vy += dy * f;
+      b.vx -= dx * f;
+      b.vy -= dy * f;
+    }
+    for (const n of nodes) {
+      if (n.k === "a") {
+        const c = topics.get(n.s ?? "unsorted");
+        if (c) {
+          n.vx += (c.x - n.x) * 0.02;
+          n.vy += (c.y - n.y) * 0.02;
+        }
+      } else {
+        // 作者/实体漂向邻居的质心
+        const list = adj.get(n.id);
+        if (list && list.length) {
+          let sx = 0;
+          let sy = 0;
+          for (const { other } of list) {
+            sx += other.x;
+            sy += other.y;
+          }
+          n.vx += (sx / list.length - n.x) * 0.03;
+          n.vy += (sy / list.length - n.y) * 0.03;
+        }
+      }
+      n.vx *= 0.85;
+      n.vy *= 0.85;
+      n.x += Math.max(-26, Math.min(26, n.vx));
+      n.y += Math.max(-26, Math.min(26, n.vy));
+    }
+    if (i % 20 === 0) onProgress?.(i / tick);
+  }
+  onProgress?.(1);
+  return { adj, byId };
+}
+
+/** 实体目录布局：按出现次数排序，网格排布。 */
+export function layoutEntityGrid(entities: SimNode[]) {
+  const sorted = [...entities].sort((a, b) => (b.n ?? 0) - (a.n ?? 0) || b.deg - a.deg);
+  const cols = Math.ceil(Math.sqrt(Math.max(1, sorted.length)));
+  const gapX = 190;
+  const gapY = 140;
+  sorted.forEach((n, i) => {
+    n.x = 220 + (i % cols) * gapX;
+    n.y = 170 + Math.floor(i / cols) * gapY;
+  });
+}
+
+/** 邻域布局：起点居中，实体内环、文章外环。 */
+export function layoutEgo(center: SimNode, neighbors: SimNode[]) {
+  center.x = 0;
+  center.y = 0;
+  const ents = neighbors.filter((n) => n.k === "e");
+  const others = neighbors.filter((n) => n.k !== "e");
+  ents.forEach((n, i) => {
+    const a = (i / Math.max(1, ents.length)) * Math.PI * 2;
+    n.x = Math.cos(a) * 240;
+    n.y = Math.sin(a) * 240;
+  });
+  others.forEach((n, i) => {
+    const a = ((i + 0.5) / Math.max(1, others.length)) * Math.PI * 2;
+    n.x = Math.cos(a) * 460;
+    n.y = Math.sin(a) * 460;
+  });
 }

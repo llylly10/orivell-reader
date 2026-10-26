@@ -54,7 +54,7 @@ function clean(md: string): string {
 }
 
 export async function POST(req: Request) {
-  let body: { image?: string; apiKey?: string; mode?: string; engine?: string; baseUrl?: string; modelName?: string };
+  let body: { image?: string; apiKey?: string; mode?: string; engine?: string; baseUrl?: string; modelName?: string; apiKeyOverride?: string };
   try {
     body = await req.json();
   } catch {
@@ -65,7 +65,7 @@ export async function POST(req: Request) {
   if (image.length > MAX_IMAGE_CHARS) return Response.json({ error: "That page image is too large." }, { status: 413 });
 
   const headerKey = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "").trim();
-  const own = body.apiKey?.trim() || headerKey || undefined;
+  const own = body.apiKey?.trim() || body.apiKeyOverride?.trim() || headerKey || undefined;
   // 引擎：local = 本地 Indra OCR sidecar（免费离线）；cloud（默认）= OpenAI 兼容视觉模型
   const engineLocal = body.engine === "local";
   const layout = body.mode === "layout";

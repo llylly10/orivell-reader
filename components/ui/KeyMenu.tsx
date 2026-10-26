@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { KeyRound } from "lucide-react";
-import { validateKey, readModelName, saveModelName, readAiBase, saveAiBase, readImageModel, saveImageModel, readVisionModel, saveVisionModel } from "@/lib/ask";
+import { validateKey, readModelName, saveModelName, readAiBase, saveAiBase, readImageModel, saveImageModel, readImageBase, saveImageBase, readImageKey, saveImageKey, readVisionModel, saveVisionModel, readVisionBase, saveVisionBase, readVisionKey, saveVisionKey } from "@/lib/ask";
 import { BRAND } from "@/lib/brand";
 import { useT } from "@/lib/lang-context";
 import { Popover, barBtn } from "./Popover";
@@ -12,11 +12,11 @@ const STORAGE_KEY = "together:api-key";
 /** Today's free use of the shared key, as the share still unspent (0 to 1). */
 type Free = { left: number; signedIn: boolean };
 
-/** Bring your own Together key. Stored in this browser only. A little reading a day is free without one. */
+/** Bring your own key. Stored in this browser only. Each model group can carry
+    its own URL + key + model name; a group left blank falls back to the main set. */
 export function KeyMenu() {
   const t = useT();
   const [key, setKey] = useState("");
-  const [custom, setCustom] = useState(false);
   const [house, setHouse] = useState<boolean | null>(null);
   const [free, setFree] = useState<Free | null>(null);
 
@@ -26,9 +26,8 @@ export function KeyMenu() {
     } catch {}
     fetch("/api/key")
       .then((r) => r.json())
-      .then((j: { house?: boolean; custom?: boolean; free?: Free | null }) => {
+      .then((j: { house?: boolean; free?: Free | null }) => {
         setHouse(Boolean(j.house));
-        setCustom(Boolean(j.custom));
         setFree(j.free ?? null);
       })
       .catch(() => setHouse(false));
@@ -38,14 +37,14 @@ export function KeyMenu() {
     return () => window.removeEventListener("gloss:free", onFree);
   }, []);
 
-  const spent = house === false && !custom || free?.left === 0;
+  const spent = house === false || free?.left === 0;
   const status = key ? t("key.title") : spent ? t("topbar.addKey") : free && free.left <= 0.25 ? t("key.lowFree") : null;
 
   return (
     <Popover
       label={t("key.title")}
       tip={key ? t("key.hint") : t("topbar.addKey")}
-      width={320}
+      width={330}
       triggerClass={barBtn}
       openOn="gloss:key"
       trigger={
@@ -55,18 +54,39 @@ export function KeyMenu() {
         </>
       }
     >
-      {(close) => <KeyPanel current={key} house={house} free={free} custom={custom} onSave={(v) => setKey(v)} close={close} />}
+      {(close) => <KeyPanel current={key} house={house} free={free} onSave={(v) => setKey(v)} close={close} />}
     </Popover>
   );
 }
 
-function KeyPanel({ current, house, free, custom, onSave, close }: { current: string; house: boolean | null; free: Free | null; custom: boolean; onSave: (v: string) => void; close: () => void }) {
+function Field({ label, value, onChange, placeholder, type = "text" }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
+  return (
+    <label className="block">
+      <span className="text-[11px] text-ink-3">{label}</span>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete="off"
+        spellCheck={false}
+        className="mt-1 h-8 w-full rounded-lg border border-rule bg-bg px-2.5 text-[12.5px] text-ink outline-none focus-visible:outline-none placeholder:text-ink-4 focus:border-rule-strong"
+      />
+    </label>
+  );
+}
+
+function KeyPanel({ current, house, free, onSave, close }: { current: string; house: boolean | null; free: Free | null; onSave: (v: string) => void; close: () => void }) {
   const t = useT();
   const [draft, setDraft] = useState(current);
   const [model, setModel] = useState(readModelName());
   const [base, setBase] = useState(readAiBase());
-  const [imageModel, setImageModel] = useState(readImageModel());
-  const [visionModel, setVisionModel] = useState(readVisionModel());
+  const [imgBase, setImgBase] = useState(readImageBase());
+  const [imgKey, setImgKey] = useState(readImageKey());
+  const [imgModel, setImgModel] = useState(readImageModel());
+  const [visBase, setVisBase] = useState(readVisionBase());
+  const [visKey, setVisKey] = useState(readVisionKey());
+  const [visModel, setVisModel] = useState(readVisionModel());
   const [state, setState] = useState<"idle" | "checking" | "bad">("idle");
 
   const save = async () => {
@@ -77,25 +97,33 @@ function KeyPanel({ current, house, free, custom, onSave, close }: { current: st
       } catch {}
       onSave("");
       saveModelName(model);
+      saveAiBase(base);
+      saveImageModel(imgModel);
+      saveImageBase(imgBase);
+      saveImageKey(imgKey);
+      saveVisionModel(visModel);
+      saveVisionBase(visBase);
+      saveVisionKey(visKey);
       close();
       return;
     }
-    // 自定义 AI 服务模式下跳过 Together 验证——key 是别家的，可用性由真实问答检验
-    if (!custom) {
-      setState("checking");
-      const ok = await validateKey(v);
-      if (!ok) {
-        setState("bad");
-        return;
-      }
+    setState("checking");
+    const ok = await validateKey(v);
+    if (!ok) {
+      setState("bad");
+      return;
     }
     try {
       localStorage.setItem(STORAGE_KEY, v);
     } catch {}
     saveModelName(model);
     saveAiBase(base);
-    saveImageModel(imageModel);
-    saveVisionModel(visionModel);
+    saveImageModel(imgModel);
+    saveImageBase(imgBase);
+    saveImageKey(imgKey);
+    saveVisionModel(visModel);
+    saveVisionBase(visBase);
+    saveVisionKey(visKey);
     onSave(v);
     close();
   };
@@ -117,8 +145,8 @@ function KeyPanel({ current, house, free, custom, onSave, close }: { current: st
           </span>
         </div>
       )}
+      <p className="mt-3 text-[11.5px] font-medium text-ink-2">{t("key.mainGroup")}</p>
       <input
-        autoFocus
         type="password"
         value={draft}
         onChange={(e) => {
@@ -130,64 +158,35 @@ function KeyPanel({ current, house, free, custom, onSave, close }: { current: st
         autoComplete="off"
         spellCheck={false}
         aria-label={t("key.title")}
-        className="mt-3 h-9 w-full rounded-lg border border-rule bg-bg px-3 text-[13px] tracking-wide text-ink outline-none focus-visible:outline-none placeholder:text-ink-4 focus:border-rule-strong"
+        className="mt-1.5 h-9 w-full rounded-lg border border-rule bg-bg px-3 text-[13px] tracking-wide text-ink outline-none focus-visible:outline-none placeholder:text-ink-4 focus:border-rule-strong"
       />
+      <Field label={t("key.modelLabel")} value={model} onChange={setModel} placeholder="qwen-plus / glm-4.7-flash…" />
+      <div className="mt-2.5">
+        <Field label={t("key.baseLabel")} value={base} onChange={setBase} placeholder="https://dashscope.aliyuncs.com/compatible…" />
+      </div>
       {state === "bad" && <p className="mt-2 text-[12.5px] text-rubric-text">Together rejected that key. Check it and try again.</p>}
-      <p className="mt-3 text-[11.5px] text-ink-3">{t("key.modelLabel")}</p>
-      <input
-        type="text"
-        value={model}
-        onChange={(e) => setModel(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && save()}
-        placeholder="qwen-plus / glm-4.7-flash…"
-        autoComplete="off"
-        spellCheck={false}
-        aria-label={t("key.modelLabel")}
-        className="mt-1.5 h-9 w-full rounded-lg border border-rule bg-bg px-3 text-[13px] text-ink outline-none focus-visible:outline-none placeholder:text-ink-4 focus:border-rule-strong"
-      />
-      <p className="mt-3 text-[11.5px] text-ink-3">{t("key.baseLabel")}</p>
-      <input
-        type="text"
-        value={base}
-        onChange={(e) => setBase(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && save()}
-        placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"
-        autoComplete="off"
-        spellCheck={false}
-        aria-label={t("key.baseLabel")}
-        className="mt-1.5 h-9 w-full rounded-lg border border-rule bg-bg px-3 text-[13px] text-ink outline-none focus-visible:outline-none placeholder:text-ink-4 focus:border-rule-strong"
-      />
-      <p className="mt-3 text-[11.5px] text-ink-3">{t("key.imageModelLabel")}</p>
-      <input
-        type="text"
-        value={imageModel}
-        onChange={(e) => setImageModel(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && save()}
-        placeholder="wanx2.1-t2i-turbo…"
-        autoComplete="off"
-        spellCheck={false}
-        aria-label={t("key.imageModelLabel")}
-        className="mt-1.5 h-9 w-full rounded-lg border border-rule bg-bg px-3 text-[13px] text-ink outline-none focus-visible:outline-none placeholder:text-ink-4 focus:border-rule-strong"
-      />
-      <p className="mt-3 text-[11.5px] text-ink-3">{t("key.visionModelLabel")}</p>
-      <input
-        type="text"
-        value={visionModel}
-        onChange={(e) => setVisionModel(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && save()}
-        placeholder="qwen-vl-ocr"
-        autoComplete="off"
-        spellCheck={false}
-        aria-label={t("key.visionModelLabel")}
-        className="mt-1.5 h-9 w-full rounded-lg border border-rule bg-bg px-3 text-[13px] text-ink outline-none focus-visible:outline-none placeholder:text-ink-4 focus:border-rule-strong"
-      />
-      <p className="mt-2 text-[11.5px] leading-snug text-ink-4">Sent with your requests only. Stored in this browser, never on a server, never logged.</p>
+
+      <p className="mt-4 text-[11.5px] font-medium text-ink-2">{t("key.coverGroup")}</p>
+      <p className="mt-0.5 text-[11px] leading-snug text-ink-4">{t("key.coverGroupHint")}</p>
+      <div className="mt-1.5 space-y-2">
+        <Field label={t("key.groupModel")} value={imgModel} onChange={setImgModel} placeholder="wanx2.1-t2i-turbo…" />
+        <Field label={t("key.groupBase")} value={imgBase} onChange={setImgBase} placeholder={t("key.groupBaseFallback")} />
+        <Field label={t("key.groupKey")} value={imgKey} onChange={setImgKey} placeholder={t("key.groupKeyFallback")} type="password" />
+      </div>
+
+      <p className="mt-4 text-[11.5px] font-medium text-ink-2">{t("key.visionGroup")}</p>
+      <p className="mt-0.5 text-[11px] leading-snug text-ink-4">{t("key.visionGroupHint")}</p>
+      <div className="mt-1.5 space-y-2">
+        <Field label={t("key.groupModel")} value={visModel} onChange={setVisModel} placeholder="qwen-vl-ocr…" />
+        <Field label={t("key.groupBase")} value={visBase} onChange={setVisBase} placeholder={t("key.groupBaseFallback")} />
+        <Field label={t("key.groupKey")} value={visKey} onChange={setVisKey} placeholder={t("key.groupKeyFallback")} type="password" />
+      </div>
+
+      <p className="mt-3 text-[11px] leading-snug text-ink-4">Sent with your requests only. Stored in this browser, never on a server, never logged.</p>
       <div className="mt-3 flex items-center justify-between">
-        {!custom && (
-          <a href={BRAND.keysUrl} target="_blank" rel="noopener noreferrer" className="text-[12.5px] text-rubric-text underline decoration-rule-strong underline-offset-4">
-            Get a key on Together
-          </a>
-        )}
+        <a href={BRAND.keysUrl} target="_blank" rel="noopener noreferrer" className="text-[12.5px] text-rubric-text underline decoration-rule-strong underline-offset-4">
+          Get a key on Together
+        </a>
         <div className="flex gap-1.5">
           {current && (
             <button

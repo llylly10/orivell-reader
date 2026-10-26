@@ -14,7 +14,7 @@ export const maxDuration = 60;
  * it again. The picture comes back as a JPEG.
  */
 export async function POST(req: Request) {
-  let body: { id?: string; scene?: string; topic?: string; apiKey?: string; baseUrl?: string; imageModel?: string };
+  let body: { id?: string; scene?: string; topic?: string; apiKey?: string; baseUrl?: string; imageModel?: string; apiKeyOverride?: string };
   try {
     body = await req.json();
   } catch {
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
       if (!free.ok) return needKey(free);
     }
   }
-  const r = await paintCover({ scene, topic: body.topic, apiKey, baseUrl: body.baseUrl, imageModel: body.imageModel, signal: req.signal });
+  const r = await paintCover({ scene, topic: body.topic, apiKey: apiKey || body.apiKeyOverride, baseUrl: body.baseUrl, imageModel: body.imageModel, signal: req.signal });
   if (!r.ok) return Response.json({ error: r.error }, { status: 502 });
   if (free) await chargeFree(free.subject, COVER_USD);
 

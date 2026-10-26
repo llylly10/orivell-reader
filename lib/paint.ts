@@ -34,16 +34,16 @@ export async function paintCover(req: {
   imageModel?: string;
   signal?: AbortSignal;
 }): Promise<{ ok: true; jpeg: Uint8Array } | { ok: false; error: string }> {
-  // 三件套的优先级：浏览器（添加密钥）> 服务端图像专用 env > Together 默认
+  // 三件套的优先级：浏览器（添加密钥）> 服务端图像专用 env > Together 默认。
+  // 浏览器给了专用 key 时只发专用 key——不把主密钥发往另一个服务商。
   const browserBase = req.baseUrl?.trim().replace(/\/+$/, "") ?? "";
   const base = browserBase || IMAGE_BASE || "https://api.together.xyz";
   const isTogether = /together\.xyz/.test(base);
   const imageModel = req.imageModel?.trim() || IMAGE_MODEL || DEFAULT_MODEL;
-  const key = browserBase
-    ? req.apiKey?.trim() || ""
-    : IMAGE_BASE
-      ? IMAGE_KEY || req.apiKey?.trim() || ""
-      : req.apiKey?.trim() || process.env.TOGETHER_API_KEY || "";
+  const sameAsMain = !browserBase && !IMAGE_BASE;
+  const key = sameAsMain
+    ? req.apiKey?.trim() || process.env.TOGETHER_API_KEY || ""
+    : req.apiKey?.trim() || (IMAGE_BASE ? IMAGE_KEY : "") || "";
   if (!key && !isTogether) return { ok: false, error: "No API key for the image provider." };
 
   const prompt = `Editorial risograph print. ${req.scene.replace(/\.?$/, ".")} Two-colour palette of ${shelfDef(req.topic).inks} ink on warm cream paper filling the whole image, grain and halftone texture, mid-century book-cover illustration, wordless, no lettering, no border.`;

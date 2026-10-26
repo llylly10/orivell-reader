@@ -7,7 +7,7 @@
  * one is a call to an image model).
  */
 
-import { readApiKey, readAiBase, readImageModel } from "./ask";
+import { readApiKey, readAiBase, readImageModel, readImageBase, readImageKey } from "./ask";
 import { isCustomKey, isTopic } from "./library";
 import { useStore, type LibraryItem } from "./store";
 
@@ -68,7 +68,14 @@ export async function paint(item: LibraryItem): Promise<"ok" | "rest" | "error">
     const res = await fetch("/api/covers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: item.id, scene: item.scene, topic: item.topic, apiKey: readApiKey() || undefined, baseUrl: readAiBase() || undefined, imageModel: readImageModel() || undefined }),
+      body: JSON.stringify({
+        id: item.id,
+        scene: item.scene,
+        topic: item.topic,
+        apiKey: readImageKey() || readApiKey() || undefined,
+        baseUrl: readImageBase() || readAiBase() || undefined,
+        imageModel: readImageModel() || undefined,
+      }),
     });
     if (res.status === 429 || res.status === 401) return "rest";
     if (!res.ok) return "error";

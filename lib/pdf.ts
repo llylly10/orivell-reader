@@ -2,7 +2,7 @@
 
 import type { LayoutBlock } from "@llamaindex/liteparse-wasm";
 import { inlineMd, markdownBlocks, slugify, tidyTitle, undash, type Article, type Block } from "./article";
-import { readAiBase, readApiKey, readModelName, readVisionEngine, readVisionModel } from "./ask";
+import { readAiBase, readApiKey, readModelName, readVisionEngine, readVisionModel, readVisionBase, readVisionKey } from "./ask";
 
 /**
  * PDF to Gloss blocks, in two passes.
@@ -282,7 +282,14 @@ async function readByVision(lp: LP, bytes: Uint8Array, pageNums: number[], into:
           const res = await fetch("/api/pdf-page", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image: await pageImage(new Uint8Array(s.imageBytes)), apiKey, engine: readVisionEngine(), baseUrl: readAiBase() || undefined, modelName: readVisionModel() || undefined }),
+            body: JSON.stringify({
+              image: await pageImage(new Uint8Array(s.imageBytes)),
+              apiKey,
+              engine: readVisionEngine(),
+              baseUrl: readVisionBase() || readAiBase() || undefined,
+              apiKeyOverride: readVisionKey() || undefined,
+              modelName: readVisionModel() || undefined,
+            }),
           });
           const j = (await res.json()) as { markdown?: string; error?: string; code?: string };
           if (j.markdown) into.set(s.pageNum, markdownBlocks(htmlTablesToMarkdown(j.markdown)));

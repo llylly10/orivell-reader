@@ -38,6 +38,8 @@ export function saveModelName(name: string) {
 
 const BASE_STORAGE = "gloss:ai-base";
 const IMAGE_MODEL_STORAGE = "gloss:image-model";
+const IMAGE_BASE_STORAGE = "gloss:image-base";
+const IMAGE_KEY_STORAGE = "gloss:image-key";
 
 /** 浏览器里存的请求地址（OpenAI 兼容服务）。设置页的密钥面板写入。 */
 export function readAiBase(): string {
@@ -75,8 +77,44 @@ export function saveImageModel(name: string) {
   } catch {}
 }
 
+/** 封面绘制的专用地址——留空回落主地址（请求地址）。 */
+export function readImageBase(): string {
+  try {
+    return localStorage.getItem(IMAGE_BASE_STORAGE) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function saveImageBase(url: string) {
+  try {
+    const v = url.trim();
+    if (v) localStorage.setItem(IMAGE_BASE_STORAGE, v);
+    else localStorage.removeItem(IMAGE_BASE_STORAGE);
+  } catch {}
+}
+
+/** 封面绘制的专用密钥——留空回落主密钥。 */
+export function readImageKey(): string {
+  try {
+    return localStorage.getItem(IMAGE_KEY_STORAGE) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function saveImageKey(key: string) {
+  try {
+    const v = key.trim();
+    if (v) localStorage.setItem(IMAGE_KEY_STORAGE, v);
+    else localStorage.removeItem(IMAGE_KEY_STORAGE);
+  } catch {}
+}
+
 const VISION_ENGINE_STORAGE = "gloss:vision-engine";
 const VISION_MODEL_STORAGE = "gloss:vision-model";
+const VISION_BASE_STORAGE = "gloss:vision-base";
+const VISION_KEY_STORAGE = "gloss:vision-key";
 
 /** 扫描版 PDF 的识别引擎：cloud = 兼容视觉模型（走三件套）；local = 本地 Indra OCR sidecar。 */
 export function readVisionEngine(): "cloud" | "local" {
@@ -109,6 +147,40 @@ export function saveVisionModel(name: string) {
     if (v) localStorage.setItem(VISION_MODEL_STORAGE, v);
     else localStorage.removeItem(VISION_MODEL_STORAGE);
     window.dispatchEvent(new Event("gloss:visionmodel"));
+  } catch {}
+}
+
+/** 扫描识别的专用地址——留空回落主地址（请求地址）。 */
+export function readVisionBase(): string {
+  try {
+    return localStorage.getItem(VISION_BASE_STORAGE) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function saveVisionBase(url: string) {
+  try {
+    const v = url.trim();
+    if (v) localStorage.setItem(VISION_BASE_STORAGE, v);
+    else localStorage.removeItem(VISION_BASE_STORAGE);
+  } catch {}
+}
+
+/** 扫描识别的专用密钥——留空回落主密钥。 */
+export function readVisionKey(): string {
+  try {
+    return localStorage.getItem(VISION_KEY_STORAGE) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function saveVisionKey(key: string) {
+  try {
+    const v = key.trim();
+    if (v) localStorage.setItem(VISION_KEY_STORAGE, v);
+    else localStorage.removeItem(VISION_KEY_STORAGE);
   } catch {}
 }
 

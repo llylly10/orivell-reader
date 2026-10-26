@@ -141,13 +141,16 @@ export function drawGraph(
     oy: number;
     hovered: SimNode | null;
     selected: SimNode | null;
+    /** 文章节点：主题首色（与书架书脊同源）；作者/实体另有固定色 */
     colors: PlatformColors;
     show: { quote: boolean; author: boolean; entity: boolean };
-    /** 社群模式：给节点按社区上色（Louvain 划分），覆盖平台色 */
+    /** 社群模式：给节点按社区上色（Louvain 划分），覆盖主题色 */
     community?: Map<string, number>;
+    /** 画布底色（标签底衬用它） */
+    ground?: string;
   },
 ) {
-  const { width, height, scale, ox, oy } = opts;
+  const { width, height, scale, ox, oy, ground = "#fcfaf6" } = opts;
   ctx.save();
   ctx.clearRect(0, 0, width, height);
   ctx.translate(ox, oy);
@@ -174,7 +177,7 @@ export function drawGraph(
   }
   ctx.globalAlpha = 1;
 
-  // 节点：文章小圆按平台着色，作者方点，实体空心圆
+  // 节点：文章圆点用书架主题色，作者方点，实体空心圆；半径随度数
   for (const n of nodes) {
     const isFocus = !focusAdj || focusAdj.has(n.id) || n === focus;
     const r = n.k === "au" ? 5 : n.k === "e" ? 4 + Math.min(6, Math.sqrt(n.n ?? 1) * 1.6) : 2.6 + Math.min(4, n.deg * 0.5);
@@ -182,15 +185,16 @@ export function drawGraph(
     ctx.beginPath();
     ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
     if (n.k === "e") {
-      ctx.strokeStyle = opts.community ? COMMUNITY_PALETTE[(opts.community.get(n.id) ?? 0) % COMMUNITY_PALETTE.length] : "#6b7f5e";
+      ctx.strokeStyle = opts.community ? COMMUNITY_PALETTE[(opts.community.get(n.id) ?? 0) % COMMUNITY_PALETTE.length] : "#8a8474";
       ctx.lineWidth = 1.4;
       ctx.stroke();
+    } else if (n.k === "au") {
+      ctx.fillStyle = opts.community ? COMMUNITY_PALETTE[(opts.community.get(n.id) ?? 0) % COMMUNITY_PALETTE.length] : "#5a5347";
+      ctx.fill();
     } else {
       ctx.fillStyle = opts.community
         ? COMMUNITY_PALETTE[(opts.community.get(n.id) ?? 0) % COMMUNITY_PALETTE.length]
-        : n.k === "au"
-          ? "#5a5347"
-          : opts.colors[n.s ?? "x"] ?? "#4a463f";
+        : opts.colors[n.s ?? "unsorted"] ?? "#7b776f";
       ctx.fill();
     }
     if (n === opts.hovered || n === opts.selected) {
@@ -209,7 +213,7 @@ export function drawGraph(
     const label = n.t.slice(0, 26);
     ctx.font = `${n.k === "a" ? 11 : 12.5}px sans-serif`;
     const w = ctx.measureText(label).width;
-    ctx.fillStyle = "rgba(246, 243, 236, 0.92)";
+    ctx.fillStyle = ground;
     ctx.fillRect(n.x - w / 2 - 4, n.y - (n.k === "a" ? 16 : 22), w + 8, 15);
     ctx.fillStyle = "#1d1b18";
     ctx.fillText(label, n.x, n.y - (n.k === "a" ? 5 : -4));

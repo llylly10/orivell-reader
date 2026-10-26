@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Focus, RotateCcw, Sparkles } from "lucide-react";
+import { ArrowLeft, Focus, RotateCcw, Sparkles, X } from "lucide-react";
 import Graph from "graphology";
 import louvain from "graphology-communities-louvain";
 import { computeLayout, drawGraph, hitTest, type GraphEdge, type SimNode } from "@/components/graph/graph-engine";
 import { readAiBase, readApiKey, readModelName } from "@/lib/ask";
+import { TOPICS } from "@/lib/library";
 import { useT } from "@/lib/lang-context";
 
 type GraphData = {
@@ -16,21 +17,13 @@ type GraphData = {
   progress: { extracted: number; total: number };
 };
 
-const PLATFORM_COLORS: Record<string, string> = {
-  xhs: "#ff2442",
-  wb: "#e6162d",
-  dy: "#161823",
-  tieba: "#3388ff",
-  bili: "#fb7299",
-  ks: "#ff4906",
-  zh: "#0084ff",
-  x: "#4a463f",
-};
+/** 文章节点着色 = 书架书脊的同一套主题油墨色（取每主题的第一色）。 */
+const TOPIC_COLORS: Record<string, string> = Object.fromEntries(TOPICS.map((t) => [t.key, t.shades[0]]));
+const TOPIC_NAMES: Record<string, string> = Object.fromEntries(TOPICS.map((t) => [t.key, t.name]));
 
 const SHOW_DEFAULT = { quote: true, author: true, entity: true };
 const LAYOUT_KEY = "gloss:graph-layout";
 
-/** 节点集合的指纹：一致则复用已存坐标（Obsidian 被骂最多的就是每次重排） */
 function nodesFingerprint(ids: string[]): string {
   let h = 5381;
   for (const id of [...ids].sort()) h = ((h * 33) ^ id.length) ^ id.charCodeAt(0);
@@ -67,7 +60,6 @@ export default function GraphPage() {
 
   useEffect(load, [load, sig]);
 
-  // 布局：指纹匹配则复用本地坐标（秒开），否则跑力导向
   useEffect(() => {
     if (!data?.ok || !data.nodes.length) return;
     const simNodes: SimNode[] = data.nodes.map((n) => ({ ...n, x: 0, y: 0, vx: 0, vy: 0, deg: 0 }));
@@ -107,7 +99,6 @@ export default function GraphPage() {
     setView({ scale: 0.42, ox: (wrapRef.current?.clientWidth ?? 1200) / 2 - (2400 * 0.42) / 2, oy: (wrapRef.current?.clientHeight ?? 800) / 2 - (1600 * 0.42) / 2 });
   }, [data]);
 
-  // 社群划分（Louvain）：边集不变时只算一次
   const community = useMemo(() => {
     if (!layout || !communityMode) return undefined;
     const g = new Graph({ multi: false, type: "undirected" });
@@ -126,7 +117,6 @@ export default function GraphPage() {
     }
   }, [layout, communityMode, show]);
 
-  // 可见节点：类型开关 + 度数阈值 + 邻域视图 + 搜索过滤
   const visible = useMemo(() => {
     if (!layout) return { nodes: [] as SimNode[], edges: [] as GraphEdge[] };
     const egoSet = egoId && layout.adj.has(egoId) ? new Set([egoId, ...layout.adj.get(egoId)!.map((x) => x.other.id)]) : null;
@@ -138,7 +128,6 @@ export default function GraphPage() {
     return { nodes, edges };
   }, [layout, kinds, minDeg, egoId, query, show]);
 
-  // 绘制
   useEffect(() => {
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
@@ -156,9 +145,10 @@ export default function GraphPage() {
       oy: view.oy,
       hovered,
       selected,
-      colors: PLATFORM_COLORS,
+      colors: TOPIC_COLORS,
       show,
       community,
+      ground: "#fcfaf6",
     });
   }, [layout, visible, view, hovered, selected, show, community]);
 
@@ -206,7 +196,6 @@ export default function GraphPage() {
     setSelected(hitTest(visible.nodes, p.x, p.y, view.scale));
   };
 
-  // 实体抽取：一批 20 篇，用浏览器里的三件套调读者自己的 AI 服务
   const extractBatch = async () => {
     if (!data?.ok || extracting) return;
     setExtracting(true);
@@ -229,7 +218,7 @@ export default function GraphPage() {
       }
       setExtractMsg(t("graph.extractDone"));
       try {
-        localStorage.removeItem(LAYOUT_KEY); // 新实体节点进场，布局指纹失效
+        localStorage.removeItem(LAYOUT_KEY);
       } catch {}
       setSig((s) => s + 1);
     } catch {
@@ -250,103 +239,192 @@ export default function GraphPage() {
     };
   }, [layout]);
 
+  // 图例：主题计数（前 8 + 其余合并），来自当前图的文章节点
+  const topicLegend = useMemo(() => {
+    if (!layout) return [];
+    const m = new Map<string, number>();
+    for (const n of layout.nodes) if (n.k === "a") m.set(n.s ?? "unsorted", (m.get(n.s ?? "unsorted") ?? 0) + 1);
+    const arr = [...m.entries()].sort((x, y) => y[1] - x[1]);
+    if (arr.length <= 8) return arr;
+    const head = arr.slice(0, 7);
+    const rest = arr.slice(7).reduce((s, [, n]) => s + n, 0);
+    head.push(["__rest", rest]);
+    return head;
+  }, [layout]);
+
   const chip = (on: boolean, label: string, onClick: () => void) => (
     <button type="button" onClick={onClick} className={`rounded-full border px-3 py-1 text-[12px] transition-colors ${on ? "border-ink-3 bg-sunk text-ink" : "border-rule text-ink-3 hover:text-ink"}`}>
       {label}
     </button>
   );
 
+  const legendDot = (color: string, filled = true) => (
+    <span className="inline-block size-2.5 shrink-0 rounded-full" style={filled ? { background: color } : { border: `1.5px solid ${color}` }} aria-hidden />
+  );
+
   return (
-    <div className="flex min-h-screen flex-col bg-bg">
-      <header className="flex items-center justify-between gap-3 px-5 py-3">
+    <div className="flex h-screen flex-col bg-bg">
+      <header className="flex items-center justify-between gap-3 px-5 pb-2.5 pt-3.5">
         <div className="flex items-baseline gap-3">
           <span className="font-serif text-[17px] text-ink">Gloss</span>
-          <span className="text-[13px] text-ink-3">{t("graph.title")}</span>
+          <h1 className="text-[13px] text-ink-3">{t("graph.title")}</h1>
         </div>
         <Link href="/" className="flex items-center gap-1.5 rounded-full border border-rule px-3 py-1 text-[12.5px] text-ink-2 transition-colors hover:border-ink-3 hover:text-ink">
           <ArrowLeft size={13} /> {t("graph.back")}
         </Link>
       </header>
-      <div className="mx-5 flex flex-wrap items-center gap-2 border-t border-rule pt-3">
+
+      <div className="mx-5 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-rule pt-2.5">
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("graph.searchPlaceholder")}
           aria-label={t("graph.searchPlaceholder")}
-          className="h-8 w-44 rounded-full border border-rule bg-bg-raised px-3 text-[12.5px] text-ink outline-none placeholder:text-ink-4 focus:border-rule-strong"
+          className="h-8 w-40 rounded-full border border-rule bg-bg-raised px-3 text-[12.5px] text-ink outline-none placeholder:text-ink-4 focus:border-rule-strong"
         />
+        <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
         {chip(show.quote, t("graph.quote"), () => setShow((s) => ({ ...s, quote: !s.quote })))}
         {chip(show.author, t("graph.author"), () => setShow((s) => ({ ...s, author: !s.author })))}
         {chip(show.entity, t("graph.entity"), () => setShow((s) => ({ ...s, entity: !s.entity })))}
         <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
-        {chip(kinds.au, t("graph.kindAuthor"), () => setKinds((k) => ({ ...k, au: !k.au })))}
-        {chip(kinds.e, t("graph.kindEntity"), () => setKinds((k) => ({ ...k, e: !k.e })))}
         {chip(communityMode, t("graph.community"), () => setCommunityMode((v) => !v))}
         <label className="flex items-center gap-1.5 text-[12px] text-ink-3">
           {t("graph.minDegree")}
-          <input type="range" min={1} max={8} value={minDeg} onChange={(e) => setMinDeg(Number(e.target.value))} className="h-1 w-20 accent-[var(--rubric)]" aria-label={t("graph.minDegree")} />
-          <span className="tabular-nums">{minDeg}</span>
+          <input type="range" min={1} max={8} value={minDeg} onChange={(e) => setMinDeg(Number(e.target.value))} className="h-1 w-16 accent-[var(--rubric)]" aria-label={t("graph.minDegree")} />
+          <span className="w-3 tabular-nums">{minDeg}</span>
         </label>
-        <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
-        <button
-          type="button"
-          onClick={extractBatch}
-          disabled={extracting || !data?.ok}
-          className="flex items-center gap-1.5 rounded-full border border-rule px-3 py-1 text-[12px] text-ink transition-colors hover:border-ink-3 hover:bg-[var(--bg-raised)] disabled:opacity-40"
-        >
-          <Sparkles size={12} /> {extracting ? t("graph.extracting") : t("graph.extract")}
-        </button>
-        {extractMsg && <span className="max-w-56 truncate text-[12px] text-ink-3">{extractMsg}</span>}
-        {egoId && (
-          <button type="button" onClick={() => setEgoId(null)} className="flex items-center gap-1 rounded-full border border-rule px-3 py-1 text-[12px] text-ink-2 transition-colors hover:border-ink-3">
-            <RotateCcw size={11} /> {t("graph.resetEgo")}
+        <span className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={extractBatch}
+            disabled={extracting || !data?.ok}
+            className="flex items-center gap-1.5 rounded-full border border-rule px-3 py-1 text-[12px] text-ink transition-colors hover:border-ink-3 hover:bg-[var(--bg-raised)] disabled:opacity-40"
+          >
+            <Sparkles size={12} /> {extracting ? t("graph.extracting") : t("graph.extract")}
           </button>
-        )}
-        {data?.ok && counts && (
-          <span className="ml-auto text-[12px] tabular-nums text-ink-3">
-            {t("graph.counts", { a: String(counts.a), au: String(counts.au), e: String(counts.e) })}
-            {visible.nodes.length !== (layout?.nodes.length ?? 0) ? ` · ${t("graph.showing", { n: String(visible.nodes.length) })}` : ""}
-          </span>
-        )}
+          {data?.ok && counts && (
+            <span className="text-[12px] tabular-nums text-ink-3">
+              {t("graph.counts", { a: String(counts.a), au: String(counts.au), e: String(counts.e) })}
+            </span>
+          )}
+        </span>
       </div>
-      <div ref={wrapRef} className="relative min-h-0 flex-1 cursor-grab active:cursor-grabbing" onMouseMove={onMove} onMouseDown={onDown} onMouseUp={onUp} onMouseLeave={onUp} onClick={onClick} onWheel={onWheel}>
-        <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
-        {progress > 0 && progress < 1 && (
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-[10px] border border-rule bg-bg-raised px-4 py-3 text-[13px] text-ink-2 shadow-sm">
-            {t("graph.layout")} {Math.round(progress * 100)}%
-          </div>
-        )}
-        {signIn && (
-          <div className="absolute inset-0 grid place-items-center">
-            <p className="rounded-[12px] border border-rule bg-bg-raised px-5 py-4 text-[13.5px] text-ink-2">{t("graph.signIn")}</p>
-          </div>
-        )}
-        {empty && !signIn && (
-          <div className="absolute inset-0 grid place-items-center">
-            <p className="rounded-[12px] border border-rule bg-bg-raised px-5 py-4 text-[13.5px] text-ink-2">{t("graph.empty")}</p>
-          </div>
-        )}
-        {selected && (
-          <aside className="absolute bottom-4 right-4 w-72 rounded-[12px] border border-rule bg-bg-raised p-3.5 shadow-sm">
-            <p className="text-[13.5px] font-medium leading-snug text-ink">{selected.t || selected.id}</p>
-            <p className="mt-1 text-[11.5px] text-ink-3">
-              {selected.k === "au" ? t("graph.kindAuthor") : selected.k === "e" ? t("graph.kindEntity") : selected.s || "X"}
-              {selected.k === "e" && selected.n ? ` · ×${selected.n}` : ""} · {selected.deg} {t("graph.links")}
-            </p>
-            <div className="mt-2.5 flex gap-1.5">
-              {selected.k === "a" && (
-                <Link href={`/read/${encodeURIComponent(selected.id)}`} className="flex-1 rounded-lg bg-ink px-3 py-1.5 text-center text-[12.5px] font-medium text-bg">
-                  {t("graph.open")}
-                </Link>
-              )}
-              {egoId !== selected.id && (
-                <button type="button" onClick={() => setEgoId(selected.id)} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-rule px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-ink-3">
-                  <Focus size={12} /> {t("graph.ego")}
-                </button>
-              )}
+
+      <div className="mx-5 mb-3 mt-2.5 flex min-h-0 flex-1 gap-3">
+        <div ref={wrapRef} className="relative min-h-0 flex-1 cursor-grab overflow-hidden rounded-[14px] bg-bg-raised active:cursor-grabbing" onMouseMove={onMove} onMouseDown={onDown} onMouseUp={onUp} onMouseLeave={onUp} onClick={onClick} onWheel={onWheel}>
+          <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
+          {progress > 0 && progress < 1 && (
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-[10px] border border-rule bg-bg px-4 py-3 text-[13px] text-ink-2">
+              {t("graph.layout")} {Math.round(progress * 100)}%
             </div>
-          </aside>
-        )}
+          )}
+          {signIn && (
+            <div className="absolute inset-0 grid place-items-center">
+              <p className="rounded-[12px] border border-rule bg-bg px-5 py-4 text-[13.5px] text-ink-2">{t("graph.signIn")}</p>
+            </div>
+          )}
+          {empty && !signIn && (
+            <div className="absolute inset-0 grid place-items-center">
+              <p className="rounded-[12px] border border-rule bg-bg px-5 py-4 text-[13.5px] text-ink-2">{t("graph.empty")}</p>
+            </div>
+          )}
+          {selected && (
+            <aside className="absolute bottom-4 right-4 w-72 rounded-[12px] border border-rule bg-bg p-3.5 shadow-sm">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-[13.5px] font-medium leading-snug text-ink">{selected.t || selected.id}</p>
+                <button type="button" onClick={() => setSelected(null)} aria-label={t("common.close")} className="text-ink-3 hover:text-ink">
+                  <X size={14} />
+                </button>
+              </div>
+              <p className="mt-1 text-[11.5px] text-ink-3">
+                {selected.k === "au" ? t("graph.kindAuthor") : selected.k === "e" ? t("graph.kindEntity") : TOPIC_NAMES[selected.s ?? ""] || "X"}
+                {selected.k === "e" && selected.n ? ` · ×${selected.n}` : ""} · {selected.deg} {t("graph.links")}
+              </p>
+              <div className="mt-2.5 flex gap-1.5">
+                {selected.k === "a" && (
+                  <Link href={`/read/${encodeURIComponent(selected.id)}`} className="flex-1 rounded-lg bg-ink px-3 py-1.5 text-center text-[12.5px] font-medium text-bg">
+                    {t("graph.open")}
+                  </Link>
+                )}
+                {egoId !== selected.id && (
+                  <button type="button" onClick={() => setEgoId(selected.id)} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-rule px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-ink-3">
+                    <Focus size={12} /> {t("graph.ego")}
+                  </button>
+                )}
+              </div>
+            </aside>
+          )}
+        </div>
+
+        <aside className="hidden w-56 shrink-0 flex-col gap-4 overflow-y-auto rounded-[14px] bg-bg-raised p-4 lg:flex">
+          <div>
+            <p className="mb-2 text-[11.5px] font-medium text-ink-2">{t("graph.legendNodes")}</p>
+            <ul className="space-y-1.5 text-[12px] text-ink-2">
+              <li className="flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  {legendDot(TOPIC_COLORS.ai ?? "#5b4a9e")} {t("graph.legendArticles")}
+                </span>
+                <span className="tabular-nums text-ink-3">{counts?.a ?? 0}</span>
+              </li>
+              <li className="flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  {legendDot("#5a5347")} {t("graph.kindAuthor")}
+                </span>
+                <span className="tabular-nums text-ink-3">{counts?.au ?? 0}</span>
+              </li>
+              <li className="flex items-center justify-between">
+                <span className="flex items-center gap-2">{legendDot("#8a8474", false)} {t("graph.kindEntity")}</span>
+                <span className="tabular-nums text-ink-3">{counts?.e ?? 0}</span>
+              </li>
+            </ul>
+          </div>
+          <div>
+            <p className="mb-2 text-[11.5px] font-medium text-ink-2">{t("graph.legendTopics")}</p>
+            <ul className="space-y-1 text-[12px] text-ink-2">
+              {topicLegend.map(([k, n]) => (
+                <li key={k} className="flex items-center justify-between">
+                  <span className="flex items-center gap-2 truncate">
+                    {legendDot(k === "__rest" ? "#b5b0a5" : TOPIC_COLORS[k] ?? "#7b776f")}
+                    <span className="truncate">{k === "__rest" ? t("graph.legendRest") : TOPIC_NAMES[k] ?? k}</span>
+                  </span>
+                  <span className="tabular-nums text-ink-3">{n}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="mb-2 text-[11.5px] font-medium text-ink-2">{t("graph.legendEdges")}</p>
+            <ul className="space-y-1 text-[12px] text-ink-2">
+              <li>
+                <button type="button" onClick={() => setShow((s) => ({ ...s, quote: !s.quote }))} className={`flex w-full items-center justify-between rounded-md px-1 py-0.5 transition-colors hover:bg-sunk ${show.quote ? "" : "opacity-40"}`}>
+                  <span className="flex items-center gap-2">
+                    <span className="inline-block h-0 w-4 border-t-2 border-[#b3543e]" aria-hidden /> {t("graph.quote")}
+                  </span>
+                </button>
+              </li>
+              <li>
+                <button type="button" onClick={() => setShow((s) => ({ ...s, author: !s.author }))} className={`flex w-full items-center justify-between rounded-md px-1 py-0.5 transition-colors hover:bg-sunk ${show.author ? "" : "opacity-40"}`}>
+                  <span className="flex items-center gap-2">
+                    <span className="inline-block h-0 w-4 border-t-2 border-[#8a8474]" aria-hidden /> {t("graph.author")}
+                  </span>
+                </button>
+              </li>
+              <li>
+                <button type="button" onClick={() => setShow((s) => ({ ...s, entity: !s.entity }))} className={`flex w-full items-center justify-between rounded-md px-1 py-0.5 transition-colors hover:bg-sunk ${show.entity ? "" : "opacity-40"}`}>
+                  <span className="flex items-center gap-2">
+                    <span className="inline-block h-0 w-4 border-t-2 border-[#6b7f5e]" aria-hidden /> {t("graph.entity")}
+                  </span>
+                </button>
+              </li>
+            </ul>
+          </div>
+          {egoId && (
+            <button type="button" onClick={() => setEgoId(null)} className="flex items-center justify-center gap-1 rounded-lg border border-rule px-3 py-1.5 text-[12px] text-ink-2 transition-colors hover:border-ink-3">
+              <RotateCcw size={11} /> {t("graph.resetEgo")}
+            </button>
+          )}
+          {extractMsg && <p className="text-[11px] leading-snug text-ink-3">{extractMsg}</p>}
+        </aside>
       </div>
     </div>
   );

@@ -16,7 +16,7 @@ export async function GET() {
 
   const articles = await db()`
     select a.article_id as id, a.data->>'title' as t, a.data->>'sourceUrl' as u,
-           a.data->>'source' as s, a.data->>'author' as au, a.data->>'addedAt' as at
+           a.data->>'topic' as topic, a.data->>'addedAt' as at
     from articles a
     where a.user_id = ${userId} and a.deleted = false
     order by a.data->>'addedAt' desc nulls last`;
@@ -26,7 +26,7 @@ export async function GET() {
   const authorNode = (name: string) => `au:${name}`;
 
   for (const r of articles) {
-    nodes.push({ id: String(r.id), k: "a", t: String(r.t ?? ""), s: String(r.s ?? ""), });
+    nodes.push({ id: String(r.id), k: "a", t: String(r.t ?? ""), s: String(r.topic ?? "unsorted"), });
     const au = String(r.au ?? "").trim();
     if (au) {
       nodes.push({ id: authorNode(au), k: "au", t: au });

@@ -67,6 +67,22 @@ function repulsionTick(nodes: SimNode[], cell: number, strength: number) {
   }
 }
 
+/** 由边表建邻接表并累计度数——布局与主线程绘制共用。 */
+export function buildAdjacency(nodes: SimNode[], edges: GraphEdge[]): Map<string, { other: SimNode; k: GraphEdge["k"] }[]> {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const adj = new Map<string, { other: SimNode; k: GraphEdge["k"] }[]>();
+  for (const e of edges) {
+    const a = byId.get(e.s);
+    const b = byId.get(e.t);
+    if (!a || !b || a === b) continue;
+    (adj.get(a.id) ?? adj.set(a.id, []).get(a.id)!).push({ other: b, k: e.k });
+    (adj.get(b.id) ?? adj.set(b.id, []).get(b.id)!).push({ other: a, k: e.k });
+    a.deg++;
+    b.deg++;
+  }
+  return adj;
+}
+
 /** 一次性布局：收敛后返回静止坐标（交互只做平移缩放和命中测试） */
 export function computeLayout(nodes: SimNode[], edges: GraphEdge[], tick = 220, onProgress?: (p: number) => void) {
   const byId = new Map(nodes.map((n) => [n.id, n]));
@@ -79,16 +95,7 @@ export function computeLayout(nodes: SimNode[], edges: GraphEdge[], tick = 220, 
     n.x = W / 2 + Math.cos(angle) * r;
     n.y = H / 2 + Math.sin(angle) * r;
   }
-  const adj = new Map<string, { other: SimNode; k: GraphEdge["k"] }[]>();
-  for (const e of edges) {
-    const a = byId.get(e.s);
-    const b = byId.get(e.t);
-    if (!a || !b || a === b) continue;
-    (adj.get(a.id) ?? adj.set(a.id, []).get(a.id)!).push({ other: b, k: e.k });
-    (adj.get(b.id) ?? adj.set(b.id, []).get(b.id)!).push({ other: a, k: e.k });
-    a.deg++;
-    b.deg++;
-  }
+  const adj = buildAdjacency(nodes, edges);
   for (let i = 0; i < tick; i++) {
     const cool = 1 - i / tick;
     repulsionTick(nodes, 90, 2600 * cool);

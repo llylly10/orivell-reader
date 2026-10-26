@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Focus, RotateCcw, Sparkles, X } from "lucide-react";
 import Graph from "graphology";
 import louvain from "graphology-communities-louvain";
-import { computeLayout, drawGraph, hitTest, type GraphEdge, type SimNode } from "@/components/graph/graph-engine";
+import { buildAdjacency, computeLayout, drawGraph, hitTest, type GraphEdge, type SimNode } from "@/components/graph/graph-engine";
 import { readAiBase, readApiKey, readModelName } from "@/lib/ask";
 import { TOPICS } from "@/lib/library";
 import { useT } from "@/lib/lang-context";
@@ -84,6 +84,18 @@ export default function GraphPage() {
         if (j.fp === fp) saved = j.pos;
       }
     } catch {}
+    const settle = () => {
+      const adj = buildAdjacency(simNodes, data.edges);
+      setLayout({ nodes: simNodes, byId: new Map(simNodes.map((n) => [n.id, n])), edges: data.edges, adj });
+      fitView(simNodes);
+      setProgress(1);
+      try {
+        const pos: Record<string, [number, number]> = {};
+        for (const n of simNodes) pos[n.id] = [Math.round(n.x), Math.round(n.y)];
+        localStorage.setItem(LAYOUT_KEY, JSON.stringify({ fp, pos }));
+      } catch {}
+    };
+
     if (saved) {
       for (const n of simNodes) {
         const p = saved[n.id];
@@ -92,25 +104,50 @@ export default function GraphPage() {
           n.y = p[1];
         }
       }
-      const { adj, byId } = computeLayout(simNodes, data.edges, 0);
-      setLayout({ nodes: simNodes, byId, edges: data.edges, adj });
-      fitView(simNodes);
-      setProgress(1);
-    } else {
-      setProgress(0);
-      const id = requestAnimationFrame(() => {
-        const { adj, byId } = computeLayout(simNodes, data.edges, 220, (p) => setProgress(p));
-        setLayout({ nodes: simNodes, byId, edges: data.edges, adj });
-        fitView(simNodes);
-        try {
-          const pos: Record<string, [number, number]> = {};
-          for (const n of simNodes) pos[n.id] = [Math.round(n.x), Math.round(n.y)];
-          localStorage.setItem(LAYOUT_KEY, JSON.stringify({ fp, pos }));
-        } catch {}
-      });
-      return () => cancelAnimationFrame(id);
+      settle();
+      return;
     }
-    setView({ scale: 0.42, ox: (wrapRef.current?.clientWidth ?? 1200) / 2 - (2400 * 0.42) / 2, oy: (wrapRef.current?.clientHeight ?? 800) / 2 - (1600 * 0.42) / 2 });
+
+    setProgress(0);
+    // 布局在 Worker 后台线程算——主线程全程可交互；算完一次性回传坐标。
+    // Worker 起不来就回退主线程同步计算，视觉结果相同。
+    let cancelled = false;
+    let worker: Worker | null = null;
+    try {
+      worker = new Worker(new URL("../../components/graph/layout.worker.ts", import.meta.url));
+      worker.onmessage = (e: MessageEvent) => {
+        if (cancelled) return;
+        const m = e.data as { type: string; p?: number; positions?: [string, number, number, number][] };
+        if (m.type === "progress") setProgress(m.p ?? 0);
+        else if (m.type === "done") {
+          for (const [id, x, y, deg] of m.positions ?? []) {
+            const n = simNodes.find((s) => s.id === id);
+            if (n) {
+              n.x = x;
+              n.y = y;
+              n.deg = deg;
+            }
+          }
+          settle();
+          worker?.terminate();
+        }
+      };
+      worker.onerror = () => {
+        worker?.terminate();
+        if (!cancelled) {
+          computeLayout(simNodes, data.edges, 220);
+          settle();
+        }
+      };
+      worker.postMessage({ nodes: data.nodes, edges: data.edges, tick: 220 });
+    } catch {
+      computeLayout(simNodes, data.edges, 220);
+      settle();
+    }
+    return () => {
+      cancelled = true;
+      worker?.terminate();
+    };
   }, [data]);
 
   const community = useMemo(() => {

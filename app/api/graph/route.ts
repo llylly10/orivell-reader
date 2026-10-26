@@ -6,13 +6,30 @@ export const maxDuration = 120;
 
 /**
  * 关系图谱的物化：一次返回全部节点与边。
- * 节点：a = 文章，au = 作者，e = 实体（若已抽取）
- * 边：quote = 库内引用（推文引用了库内另一条），author = 作者写了该篇，
- *     title = 同标题簇，entity = 实体出现在文章里
+ * 结果按「文章指纹 + 实体指纹」（count + max(updated_at/created_at)）缓存：
+ * 数据没变的重复访问直接命中缓存返回，不再实时跑 jsonb 展开 SQL。
+ * 节点：a = 文章，au = 作者，e = 实体
+ * 边：quote = 库内引用，author = 作者写了该篇，entity = 实体出现在文章里
  */
+
+type Payload = { ok: true; nodes: unknown[]; edges: unknown[]; progress: { extracted: number; total: number } };
+type Cached = { fp: string; payload: Payload };
+const cache = new Map<string, Cached>();
+
+async function fingerprint(userId: string): Promise<string> {
+  const a = await db()`select count(*)::int as n, coalesce(max(updated_at)::text, '') as mu from articles where user_id = ${userId} and deleted = false`;
+  const e = await db()`select count(*)::int as n, coalesce(max(created_at)::text, '') as mu from entities where user_id = ${userId}`;
+  return `${userId}:${a[0].n}:${a[0].mu}:${e[0].n}:${e[0].mu}`;
+}
+
 export async function GET() {
   const { userId } = await auth();
   if (!userId) return Response.json({ error: "Sign in first." }, { status: 401 });
+
+  const fp = await fingerprint(userId);
+  const hit = cache.get(fp);
+  if (hit) return Response.json(hit.payload);
+  if (cache.size > 8) cache.clear();
 
   const articles = await db()`
     select a.article_id as id, a.data->>'title' as t, a.data->>'sourceUrl' as u,
@@ -67,10 +84,12 @@ export async function GET() {
   const total = await db()`
     select count(*)::int n from articles where user_id = ${userId} and deleted = false`;
 
-  return Response.json({
+  const payload: Payload = {
     ok: true,
     nodes,
     edges,
     progress: { extracted: extracted[0].n, total: total[0].n },
-  });
+  };
+  cache.set(fp, { fp, payload });
+  return Response.json(payload);
 }

@@ -7,14 +7,16 @@ import Graph from "graphology";
 import louvain from "graphology-communities-louvain";
 import {
   buildAdjacency,
-  computeLayout,
-  computeTopicLayout,
+  ALPHA_MIN,
+  createTopicSim,
+  simStep,
   drawGraph,
   hitTest,
   layoutEgo,
   layoutEntityGrid,
   type GraphEdge,
   type SimNode,
+  type TopicSim,
 } from "@/components/graph/graph-engine";
 import { readAiBase, readApiKey, readModelName } from "@/lib/ask";
 import { TOPICS } from "@/lib/library";
@@ -68,7 +70,48 @@ export default function GraphPage() {
   const [forces, setForces] = useState({ repel: 1500, linkDist: 80, centerK: 0.02 });
   const forcesChangedRef = useRef(false);
   const dragNodeRef = useRef<SimNode | null>(null);
+  const nodeMovedRef = useRef(false);
   const sceneRef = useRef<{ nodes: SimNode[]; byId: Map<string, SimNode>; edges: GraphEdge[]; adj: Map<string, { other: SimNode; k: GraphEdge["k"] }[]> } | null>(null);
+  const simRef = useRef<TopicSim | null>(null);
+  const forcesRef = useRef(forces);
+  const modeRef = useRef(mode);
+  useEffect(() => {
+    forcesRef.current = forces;
+    modeRef.current = mode;
+  }, [forces, mode]);
+  const rafRef = useRef(0);
+  const liveRef = useRef(false);
+  const layoutFpRef = useRef("");
+
+  // 再加热（d3 语义）：把 alpha 抬起来后逐帧活跑物理并重绘；冷却后落盘布局。
+  // 拖拽节点和力学滑杆都走这里——布局从当前坐标重新收敛，不从随机点重来。
+  const reheat = (level: number) => {
+    const sim = simRef.current;
+    if (!sim || modeRef.current !== "galaxy") return;
+    sim.alpha = Math.max(sim.alpha, level);
+    if (liveRef.current) return;
+    liveRef.current = true;
+    const frame = () => {
+      const sim = simRef.current;
+      if (!sim || !liveRef.current || modeRef.current !== "galaxy") {
+        liveRef.current = false;
+        return;
+      }
+      if (sim.alpha > ALPHA_MIN) {
+        simStep(sim, forcesRef.current);
+        renderRef.current();
+        rafRef.current = requestAnimationFrame(frame);
+        return;
+      }
+      liveRef.current = false;
+      try {
+        const pos: Record<string, [number, number]> = {};
+        for (const n of sim.nodes) pos[n.id] = [Math.round(n.x), Math.round(n.y)];
+        localStorage.setItem(LAYOUT_KEY, JSON.stringify({ fp: layoutFpRef.current, pos }));
+      } catch {}
+    };
+    rafRef.current = requestAnimationFrame(frame);
+  };
 
   const load = useCallback(() => {
     fetch("/api/graph")
@@ -92,11 +135,28 @@ export default function GraphPage() {
     return m;
   }, [data]);
 
-  // ── galaxy 布局：Worker 后台跑主题聚簇布局 ──
+  const drawCtx = (canvas: HTMLCanvasElement | null) => {
+    const wrap = wrapRef.current;
+    if (!canvas || !wrap) return null;
+    const dpr = Math.min(devicePixelRatio, 2);
+    canvas.width = wrap.clientWidth * dpr;
+    canvas.height = wrap.clientHeight * dpr;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return ctx;
+  };
+
+  // ── galaxy 布局：活体物理模拟（Obsidian 式）——rAF 逐帧步进，节点游向主题星团 ──
   useEffect(() => {
     if (mode !== "galaxy" || !data?.ok || !data.nodes.length) return;
     const simNodes: SimNode[] = data.nodes.map((n) => ({ ...n, x: 0, y: 0, vx: 0, vy: 0, deg: 0 }));
     const fp = nodesFingerprint(data.nodes.map((n) => n.id)) + ":galaxy";
+    const byId = new Map(simNodes.map((n) => [n.id, n]));
+    simRef.current = null;
+    layoutFpRef.current = fp;
+
+    // 已有保存布局：坐标就位；模拟静置待命（alpha=0，拖拽/滑杆再加热时才动）
     let saved: Record<string, [number, number]> | null = null;
     try {
       const raw = localStorage.getItem(LAYOUT_KEY);
@@ -105,18 +165,6 @@ export default function GraphPage() {
         if (j.fp === fp) saved = j.pos;
       }
     } catch {}
-
-    const settle = () => {
-      const adj = buildAdjacency(simNodes, data.edges);
-      setLayout({ nodes: simNodes, byId: new Map(simNodes.map((n) => [n.id, n])), edges: data.edges, adj });
-      setProgress(1);
-      try {
-        const pos: Record<string, [number, number]> = {};
-        for (const n of simNodes) pos[n.id] = [Math.round(n.x), Math.round(n.y)];
-        localStorage.setItem(LAYOUT_KEY, JSON.stringify({ fp, pos }));
-      } catch {}
-    };
-
     if (saved) {
       for (const n of simNodes) {
         const p = saved[n.id];
@@ -125,93 +173,85 @@ export default function GraphPage() {
           n.y = p[1];
         }
       }
-      settle();
+      const sim = createTopicSim(simNodes, data.edges, false);
+      sim.alpha = 0;
+      simRef.current = sim;
+      setLayout({ nodes: simNodes, byId, edges: data.edges, adj: sim.adj });
+      setProgress(1);
       return;
     }
 
+    // 活体物理：每帧一步，节点带惯性荡漾着游向主题重心；冷却后自动停
     setProgress(0);
+    setLayout(null);
+    const sim = createTopicSim(simNodes, data.edges);
+    simRef.current = sim;
+    let i = 0;
+    let raf = 0;
     let cancelled = false;
-    let worker: Worker | null = null;
-    try {
-      worker = new Worker(new URL("../../components/graph/layout.worker.ts", import.meta.url));
-      const simById = new Map(simNodes.map((n) => [n.id, n]));
-      worker.onmessage = (e: MessageEvent) => {
-        if (cancelled) return;
-        const m = e.data as { type: string; p?: number; positions?: [string, number, number, number][] };
-        if (m.type === "progress") setProgress(m.p ?? 0);
-        else if (m.type === "tick") {
-          // 活体沉降：应用中途坐标，适配视野并直接绘制（此时 scene 尚未建立）
-          for (const [id, x, y, deg] of m.positions ?? []) {
-            const n = simById.get(id);
-            if (n) {
-              n.x = x;
-              n.y = y;
-              n.deg = deg;
-            }
-          }
-          const wrap = wrapRef.current;
-          const canvas = canvasRef.current;
-          if (!wrap || !canvas) return;
+    let v = { scale: view.scale, ox: view.ox, oy: view.oy };
+    const frame = () => {
+      if (cancelled) return;
+      if (sim.alpha > ALPHA_MIN) {
+        simStep(sim, forcesRef.current);
+        if (i % 10 === 0) setProgress(1 - sim.alpha);
+        // 每 20 帧适配一次视野
+        if (i % 20 === 0 && wrapRef.current) {
           const xs = simNodes.map((n) => n.x);
           const ys = simNodes.map((n) => n.y);
           const minX = Math.min(...xs), maxX = Math.max(...xs);
           const minY = Math.min(...ys), maxY = Math.max(...ys);
           const w = Math.max(240, maxX - minX + 200);
           const h = Math.max(240, maxY - minY + 200);
-          const scale = Math.min(1.6, Math.min(wrap.clientWidth / w, wrap.clientHeight / h));
-          const ox = wrap.clientWidth / 2 - ((minX + maxX) / 2) * scale;
-          const oy = wrap.clientHeight / 2 - ((minY + maxY) / 2) * scale;
-          setView({ scale, ox, oy });
-          const dpr = Math.min(devicePixelRatio, 2);
-          canvas.width = wrap.clientWidth * dpr;
-          canvas.height = wrap.clientHeight * dpr;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) return;
-          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          drawGraph(ctx, simNodes, simById, data.edges, new Map(), {
-            width: wrap.clientWidth,
-            height: wrap.clientHeight,
-            scale,
-            ox,
-            oy,
+          const scale = Math.min(1.6, Math.min(wrapRef.current.clientWidth / w, wrapRef.current.clientHeight / h));
+          v = { scale, ox: wrapRef.current.clientWidth / 2 - ((minX + maxX) / 2) * scale, oy: wrapRef.current.clientHeight / 2 - ((minY + maxY) / 2) * scale };
+          setView(v);
+        }
+        const ctx = drawCtx(canvasRef.current);
+        if (ctx) {
+          drawGraph(ctx, simNodes, byId, data.edges, sim.adj, {
+            width: wrapRef.current?.clientWidth ?? 1200,
+            height: wrapRef.current?.clientHeight ?? 800,
+            scale: v.scale,
+            ox: v.ox,
+            oy: v.oy,
             hovered: null,
             selected: null,
             colors: TOPIC_COLORS,
             show: SHOW_DEFAULT,
             ground: "#fcfaf6",
           });
-          setProgress(m.p ?? 0);
         }
-        else if (m.type === "done") {
-          for (const [id, x, y, deg] of m.positions ?? []) {
-            const n = simById.get(id);
-            if (n) {
-              n.x = x;
-              n.y = y;
-              n.deg = deg;
-            }
-          }
-          settle();
-          worker?.terminate();
-        }
-      };
-      worker.onerror = () => {
-        worker?.terminate();
-        if (!cancelled) {
-          computeTopicLayout(simNodes, data.edges, 240);
-          settle();
-        }
-      };
-      worker.postMessage({ mode: "topic", nodes: data.nodes, edges: data.edges, tick: 240, params: forces, fromCurrent: false });
-    } catch {
-      computeTopicLayout(simNodes, data.edges, 240);
-      settle();
-    }
+        i++;
+        raf = requestAnimationFrame(frame);
+      } else {
+        setProgress(1);
+        setLayout({ nodes: simNodes, byId, edges: data.edges, adj: sim.adj });
+        try {
+          const pos: Record<string, [number, number]> = {};
+          for (const n of simNodes) pos[n.id] = [Math.round(n.x), Math.round(n.y)];
+          localStorage.setItem(LAYOUT_KEY, JSON.stringify({ fp, pos }));
+        } catch {}
+        return;
+      }
+    };
+    raf = requestAnimationFrame(frame);
     return () => {
       cancelled = true;
-      worker?.terminate();
+      cancelAnimationFrame(raf);
+      liveRef.current = false;
+      cancelAnimationFrame(rafRef.current);
     };
-  }, [data, mode, forces]);
+  }, [data, mode]);
+
+  // 力学滑杆实时生效：布局就位后从当前坐标重新收敛；初始布局期间活体循环每帧
+  // 直接读 forcesRef，改动即时可见，无需再加热
+  useEffect(() => {
+    if (!forcesChangedRef.current) return;
+    forcesChangedRef.current = false;
+    if (!layout) return;
+    reheat(0.5);
+  }, [forces, layout]);
 
   // ── 场景：每模式各自的可见节点/边 ──
   const scene = useMemo(() => {
@@ -391,13 +431,17 @@ export default function GraphPage() {
 
   const onMove = (e: React.MouseEvent) => {
     if (!scene) return;
-    // 拖节点：坐标直接改到光标位置，命令式重绘（Obsidian 式跟手）
+    // 拖节点：fx/fy 钉扎到光标处并把局部再加热——邻居被连线拖着走（Obsidian 手感）；
+    // x/y 直接赋值让无模拟的 hubs/ego 模式也跟手
     const dragNode = dragNodeRef.current;
     if (dragNode) {
       const pt = toWorld(e.clientX, e.clientY);
       dragNode.x = pt.x;
       dragNode.y = pt.y;
-      renderRef.current?.();
+      dragNode.fx = pt.x;
+      dragNode.fy = pt.y;
+      nodeMovedRef.current = true;
+      reheat(0.24);
       return;
     }
     const drag = dragRef.current;
@@ -412,6 +456,7 @@ export default function GraphPage() {
   };
   const onDown = (e: React.MouseEvent) => {
     // 先看是否命中节点：命中则拖节点，否则平移画布
+    nodeMovedRef.current = false;
     if (scene) {
       const pt = toWorld(e.clientX, e.clientY);
       const hit = hitTest(scene.nodes, pt.x, pt.y, view.scale);
@@ -423,6 +468,11 @@ export default function GraphPage() {
     dragRef.current = { x: e.clientX, y: e.clientY, ox: view.ox, oy: view.oy };
   };
   const onUp = () => {
+    // 松手解除钉扎：节点带着速度回弹就位，模拟自然冷却
+    if (dragNodeRef.current) {
+      dragNodeRef.current.fx = undefined;
+      dragNodeRef.current.fy = undefined;
+    }
     dragNodeRef.current = null;
     dragRef.current = null;
   };
@@ -447,7 +497,8 @@ export default function GraphPage() {
     if (hit && hit.k === "a") window.location.href = `/read/${encodeURIComponent(hit.id)}`;
   };
   const onClick = (e: React.MouseEvent) => {
-    if (!scene || dragRef.current) return;
+    // 刚拖完节点不当作点击（避免松手弹详情卡）
+    if (!scene || dragRef.current || nodeMovedRef.current) return;
     const p = toWorld(e.clientX, e.clientY);
     setSelected(hitTest(scene.nodes, p.x, p.y, view.scale));
   };

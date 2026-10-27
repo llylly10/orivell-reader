@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * 关系图谱画布：自定义力导向布局（网格化斥力 + 边弹簧 + 向心），布局收敛后
- * 静止成图；滚轮缩放、拖拽平移、节点悬停高亮、点击选中。颜色只放在数据上：
- * 节点按来源平台着色，边按类型区分，无装饰。
+ * 关系图谱画布：活体力导向模拟（网格化斥力 + 边弹簧 + 主题向心，d3-force 的
+ * alpha 冷却模型）——主线程 rAF 逐帧步进，打开时节点游向主题星团、拖拽/力学
+ * 滑杆把模拟再加热，冷却后静止成图；滚轮缩放、拖拽平移、节点悬停高亮、点击
+ * 选中。颜色只放在数据上：节点按来源平台着色，边按类型区分，无装饰。
  */
 
 export type GraphNode = { id: string; k: "a" | "au" | "e"; t: string; s?: string; n?: number };
@@ -21,6 +22,9 @@ export type SimNode = {
   vx: number;
   vy: number;
   deg: number;
+  /** 拖拽钉扎（d3 fx/fy 语义）：拖动中的节点固定在光标处 */
+  fx?: number;
+  fy?: number;
 };
 
 export type PlatformColors = Record<string, string>;
@@ -83,47 +87,104 @@ export function buildAdjacency(nodes: SimNode[], edges: GraphEdge[]): Map<string
   return adj;
 }
 
-/** 一次性布局：收敛后返回静止坐标（交互只做平移缩放和命中测试） */
-export function computeLayout(nodes: SimNode[], edges: GraphEdge[], tick = 220, onProgress?: (p: number) => void) {
+export type TopicSim = {
+  nodes: SimNode[];
+  byId: Map<string, SimNode>;
+  edges: GraphEdge[];
+  topics: Map<string, { x: number; y: number }>;
+  adj: Map<string, { other: SimNode; k: GraphEdge["k"] }[]>;
+  /** d3-force 语义的冷却温度：1 起步，每 tick 向 alphaTarget 衰减 */
+  alpha: number;
+  alphaTarget: number;
+};
+
+const ALPHA_DECAY = 0.0228; // ≈300 tick 完全冷却（d3-force 默认）
+export const ALPHA_MIN = 0.001;
+
+/** 创建主题聚簇活体模拟：重心排宽椭圆环，文章撒在各自重心附近。 */
+export function createTopicSim(nodes: SimNode[], edges: GraphEdge[], init = true): TopicSim {
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  const W = 2400;
-  const H = 1600;
-  // 初始：圆盘内随机撒点（比环形初始化收敛得好——不会留下环残影）
-  for (const n of nodes) {
-    const angle = Math.random() * Math.PI * 2;
-    const r = Math.sqrt(Math.random()) * 640;
-    n.x = W / 2 + Math.cos(angle) * r;
-    n.y = H / 2 + Math.sin(angle) * r;
+  const W = 3200;
+  const H = 2100;
+  const topics = new Map<string, { x: number; y: number }>();
+  const topicIds = [...new Set(nodes.filter((n) => n.k === "a").map((n) => n.s ?? "unsorted"))];
+  topicIds.forEach((tp, i) => {
+    const a = (i / topicIds.length) * Math.PI * 2;
+    topics.set(tp, { x: W / 2 + Math.cos(a) * 1050, y: H / 2 + Math.sin(a) * 720 });
+  });
+  if (init) {
+    for (const n of nodes) {
+      if (n.k === "a") {
+        const c = topics.get(n.s ?? "unsorted") ?? { x: W / 2, y: H / 2 };
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(Math.random()) * 160;
+        n.x = c.x + Math.cos(a) * r;
+        n.y = c.y + Math.sin(a) * r;
+      } else {
+        const a = Math.random() * Math.PI * 2;
+        n.x = W / 2 + Math.cos(a) * 520;
+        n.y = H / 2 + Math.sin(a) * 380;
+      }
+    }
   }
   const adj = buildAdjacency(nodes, edges);
-  for (let i = 0; i < tick; i++) {
-    const cool = 1 - i / tick;
-    repulsionTick(nodes, 90, 2600 * cool);
-    for (const e of edges) {
-      const a = byId.get(e.s);
-      const b = byId.get(e.t);
-      if (!a || !b) continue;
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const d = Math.sqrt(dx * dx + dy * dy) || 1;
-      const f = ((d - 90) / d) * 0.016 * (e.k === "author" ? 0.5 : 1);
-      a.vx += dx * f;
-      a.vy += dy * f;
-      b.vx -= dx * f;
-      b.vy -= dy * f;
-    }
-    for (const n of nodes) {
-      n.vx += (W / 2 - n.x) * 0.003;
-      n.vy += (H / 2 - n.y) * 0.003;
-      n.vx *= 0.86;
-      n.vy *= 0.86;
-      n.x += Math.max(-24, Math.min(24, n.vx));
-      n.y += Math.max(-24, Math.min(24, n.vy));
-    }
-    onProgress?.(i / tick);
+  return { nodes, byId, edges, topics, adj, alpha: 1, alphaTarget: 0 };
+}
+
+/** 一步物理：alpha 衰减 + 斥力/边弹簧/主题向心（均按 alpha 缩放）+ 钉扎节点。 */
+export function simStep(sim: TopicSim, params?: { repel?: number; linkDist?: number; centerK?: number }) {
+  sim.alpha += (sim.alphaTarget - sim.alpha) * ALPHA_DECAY;
+  const a = sim.alpha;
+  const ld = params?.linkDist ?? 80;
+  const ck = (params?.centerK ?? 0.02) * 3 * a;
+  repulsionTick(sim.nodes, 70, (params?.repel ?? 1500) * a * a);
+  for (const e of sim.edges) {
+    const p1 = sim.byId.get(e.s);
+    const p2 = sim.byId.get(e.t);
+    if (!p1 || !p2) continue;
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const d = Math.sqrt(dx * dx + dy * dy) || 1;
+    const f = ((d - ld) / d) * 0.012 * a;
+    p1.vx += dx * f;
+    p1.vy += dy * f;
+    p2.vx -= dx * f;
+    p2.vy -= dy * f;
   }
-  onProgress?.(1);
-  return { adj, byId };
+  for (const n of sim.nodes) {
+    if (n.fx !== undefined) {
+      n.x = n.fx;
+      n.vx = 0;
+    }
+    if (n.fy !== undefined) {
+      n.y = n.fy;
+      n.vy = 0;
+    }
+    if (n.k === "a") {
+      const c = sim.topics.get(n.s ?? "unsorted");
+      if (c && n.fx === undefined && n.fy === undefined) {
+        n.vx += (c.x - n.x) * ck;
+        n.vy += (c.y - n.y) * ck;
+      }
+    } else {
+      const list = sim.adj.get(n.id);
+      if (list && list.length) {
+        let sx = 0;
+        let sy = 0;
+        for (const { other } of list) {
+          sx += other.x;
+          sy += other.y;
+        }
+        n.vx += (sx / list.length - n.x) * 0.03 * a;
+        n.vy += (sy / list.length - n.y) * 0.03 * a;
+      }
+    }
+    n.vx *= 0.6;
+    n.vy *= 0.6;
+    n.x += Math.max(-26, Math.min(26, n.vx));
+    n.y += Math.max(-26, Math.min(26, n.vy));
+  }
+  return sim.alpha;
 }
 
 export const COMMUNITY_PALETTE = ["#7d9a6f", "#b3543e", "#5f7d9a", "#a9843f", "#8a6f9e", "#4f9a92", "#c07a3f", "#6f8a4f", "#9a5f7d", "#5a7050"];
@@ -271,89 +332,6 @@ export function hitTest(nodes: SimNode[], mx: number, my: number, scale: number)
   return best;
 }
 
-/** 按主题聚簇的布局：文章被吸到各自主题的重心，24 个主题形成明显分开的星团。
- *  作者/实体节点靠边弹簧自然附着到它们连接的文章附近。 */
-export function computeTopicLayout(
-  nodes: SimNode[],
-  edges: GraphEdge[],
-  tick = 240,
-  onProgress?: (p: number) => void,
-  /** 力学参数（Obsidian 式可调）：斥力基准 / 边理想距离 / 向心系数 */
-  params?: { repel?: number; linkDist?: number; centerK?: number },
-  /** 从节点当前坐标继续布局（滑杆微调用），否则圆盘随机初始化 */
-  fromCurrent = false,
-) {
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  const W = 3200;
-  const H = 2100;
-  // 主题重心排成宽椭圆环，保证星团之间有大片空隙
-  const topics = new Map<string, { x: number; y: number }>();
-  const topicIds = [...new Set(nodes.filter((n) => n.k === "a").map((n) => n.s ?? "unsorted"))];
-  topicIds.forEach((tp, i) => {
-    const a = (i / topicIds.length) * Math.PI * 2;
-    topics.set(tp, { x: W / 2 + Math.cos(a) * 1050, y: H / 2 + Math.sin(a) * 720 });
-  });
-  for (const n of nodes) {
-    if (n.k === "a") {
-      const c = topics.get(n.s ?? "unsorted") ?? { x: W / 2, y: H / 2 };
-      const a = Math.random() * Math.PI * 2;
-      const r = Math.sqrt(Math.random()) * 160;
-      n.x = c.x + Math.cos(a) * r;
-      n.y = c.y + Math.sin(a) * r;
-    } else {
-      const a = Math.random() * Math.PI * 2;
-      n.x = W / 2 + Math.cos(a) * 520;
-      n.y = H / 2 + Math.sin(a) * 380;
-    }
-  }
-  const adj = buildAdjacency(nodes, edges);
-  for (let i = 0; i < tick; i++) {
-    const cool = 1 - i / tick;
-    repulsionTick(nodes, 70, (params?.repel ?? 1500) * cool);
-    for (const e of edges) {
-      const a = byId.get(e.s);
-      const b = byId.get(e.t);
-      if (!a || !b) continue;
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const d = Math.sqrt(dx * dx + dy * dy) || 1;
-      const f = ((d - (params?.linkDist ?? 80)) / d) * 0.012;
-      a.vx += dx * f;
-      a.vy += dy * f;
-      b.vx -= dx * f;
-      b.vy -= dy * f;
-    }
-    for (const n of nodes) {
-      if (n.k === "a") {
-        const c = topics.get(n.s ?? "unsorted");
-        if (c) {
-          n.vx += (c.x - n.x) * 0.02;
-          n.vy += (c.y - n.y) * 0.02;
-        }
-      } else {
-        // 作者/实体漂向邻居的质心
-        const list = adj.get(n.id);
-        if (list && list.length) {
-          let sx = 0;
-          let sy = 0;
-          for (const { other } of list) {
-            sx += other.x;
-            sy += other.y;
-          }
-          n.vx += (sx / list.length - n.x) * 0.03;
-          n.vy += (sy / list.length - n.y) * 0.03;
-        }
-      }
-      n.vx *= 0.85;
-      n.vy *= 0.85;
-      n.x += Math.max(-26, Math.min(26, n.vx));
-      n.y += Math.max(-26, Math.min(26, n.vy));
-    }
-    if (i % 20 === 0) onProgress?.(i / tick);
-  }
-  onProgress?.(1);
-  return { adj, byId };
-}
 
 /** 实体目录布局：按出现次数排序，网格排布。 */
 export function layoutEntityGrid(entities: SimNode[]) {

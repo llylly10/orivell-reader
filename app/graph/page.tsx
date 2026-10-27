@@ -315,15 +315,50 @@ export default function GraphPage() {
     }
   }, [scene, communityMode, show, mode]);
 
+  const renderNow = useCallback(() => {
+    const canvas = canvasRef.current;
+    const wrap = wrapRef.current;
+    const sc = sceneRef.current;
+    if (!canvas || !wrap || !sc) return;
+    const dpr = Math.min(devicePixelRatio, 2);
+    canvas.width = wrap.clientWidth * dpr;
+    canvas.height = wrap.clientHeight * dpr;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawGraph(ctx, sc.nodes, sc.byId, sc.edges, sc.adj, {
+      width: wrap.clientWidth,
+      height: wrap.clientHeight,
+      scale: view.scale,
+      ox: view.ox,
+      oy: view.oy,
+      hovered,
+      selected,
+      colors: TOPIC_COLORS,
+      show,
+      community,
+      ground: "#fcfaf6",
+      labelsAll: mode === "hubs",
+      nodeScale,
+      linkWidth,
+    });
+  }, [view, hovered, selected, show, community, mode, nodeScale, linkWidth]);
+
+  // renderNow 引用始终最新（节点拖拽等命令式重绘用）
+  const renderRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    renderRef.current = renderNow;
+  }, [renderNow]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
     if (!canvas || !wrap || !scene) return;
-    canvas.width = wrap.clientWidth * devicePixelRatio;
-    canvas.height = wrap.clientHeight * devicePixelRatio;
+    canvas.width = wrap.clientWidth * Math.min(devicePixelRatio, 2);
+    canvas.height = wrap.clientHeight * Math.min(devicePixelRatio, 2);
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    ctx.setTransform(Math.min(devicePixelRatio, 2), 0, 0, Math.min(devicePixelRatio, 2), 0, 0);
     drawGraph(ctx, scene.nodes, scene.byId, scene.edges, scene.adj, {
       width: wrap.clientWidth,
       height: wrap.clientHeight,
@@ -337,8 +372,10 @@ export default function GraphPage() {
       community,
       ground: "#fcfaf6",
       labelsAll: mode === "hubs",
+      nodeScale,
+      linkWidth,
     });
-  }, [scene, view, hovered, selected, show, community, mode]);
+  }, [scene, view, hovered, selected, show, community, mode, nodeScale, linkWidth]);
 
   const toWorld = (cx: number, cy: number) => {
     const wrap = wrapRef.current;
@@ -349,6 +386,15 @@ export default function GraphPage() {
 
   const onMove = (e: React.MouseEvent) => {
     if (!scene) return;
+    // 拖节点：坐标直接改到光标位置，命令式重绘（Obsidian 式跟手）
+    const dragNode = dragNodeRef.current;
+    if (dragNode) {
+      const pt = toWorld(e.clientX, e.clientY);
+      dragNode.x = pt.x;
+      dragNode.y = pt.y;
+      renderRef.current?.();
+      return;
+    }
     const drag = dragRef.current;
     if (drag) {
       const dx = e.clientX - drag.x;
@@ -360,9 +406,19 @@ export default function GraphPage() {
     setHovered(hitTest(scene.nodes, p.x, p.y, view.scale));
   };
   const onDown = (e: React.MouseEvent) => {
+    // 先看是否命中节点：命中则拖节点，否则平移画布
+    if (scene) {
+      const pt = toWorld(e.clientX, e.clientY);
+      const hit = hitTest(scene.nodes, pt.x, pt.y, view.scale);
+      if (hit) {
+        dragNodeRef.current = hit;
+        return;
+      }
+    }
     dragRef.current = { x: e.clientX, y: e.clientY, ox: view.ox, oy: view.oy };
   };
   const onUp = () => {
+    dragNodeRef.current = null;
     dragRef.current = null;
   };
   const onWheel = (e: React.WheelEvent) => {

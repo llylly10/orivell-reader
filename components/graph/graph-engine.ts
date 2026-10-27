@@ -128,6 +128,15 @@ export function computeLayout(nodes: SimNode[], edges: GraphEdge[], tick = 220, 
 
 export const COMMUNITY_PALETTE = ["#7d9a6f", "#b3543e", "#5f7d9a", "#a9843f", "#8a6f9e", "#4f9a92", "#c07a3f", "#6f8a4f", "#9a5f7d", "#5a7050"];
 
+/**
+ * 图谱渲染 v2（依 2025-26 可视化研究）：
+ * - 深色底 + 少量饱和主题色：彩色节点在暗场上才「发光」
+ * - 度数 √ 缩放半径：枢纽大、叶子小，层次一眼可读
+ * - 贝塞尔弧线边：低透明度、按类型着色；邻边聚焦时提亮
+ * - 悬停压暗：非邻域降到 0.1，邻域保持全亮（Obsidian 同款）
+ * - 标签随缩放淡入（LOD）：缩放越大显示越多；悬停/选中强制显示
+ * - 视野外裁剪 + DPR 上限 2（在页面里处理），4000 节点内 Canvas 2D 流畅
+ */
 export function drawGraph(
   ctx: CanvasRenderingContext2D,
   nodes: SimNode[],
@@ -142,7 +151,7 @@ export function drawGraph(
     oy: number;
     hovered: SimNode | null;
     selected: SimNode | null;
-    /** 文章节点：主题首色（与书架书脊同源）；作者/实体另有固定色 */
+    /** 文章节点：主题色（与书架书脊同源，取亮档）；作者/实体另有固定色 */
     colors: PlatformColors;
     show: { quote: boolean; author: boolean; entity: boolean };
     /** 社群模式：给节点按社区上色（Louvain 划分），覆盖主题色 */
@@ -153,74 +162,95 @@ export function drawGraph(
     ground?: string;
   },
 ) {
-  const { width, height, scale, ox, oy, ground = "#fcfaf6" } = opts;
+  const { width, height, scale, ox, oy, ground = "#161412" } = opts;
   ctx.save();
   ctx.clearRect(0, 0, width, height);
   ctx.translate(ox, oy);
   ctx.scale(scale, scale);
 
+  // 视野包围盒（世界坐标），用于裁剪
+  const vx0 = -ox / scale - 60;
+  const vy0 = -oy / scale - 60;
+  const vx1 = (width - ox) / scale + 60;
+  const vy1 = (height - oy) / scale + 60;
+  const inView = (n: SimNode) => n.x > vx0 && n.x < vx1 && n.y > vy0 && n.y < vy1;
+
   const visible = (k: GraphEdge["k"]) => opts.show[k];
-  // 边：选中/悬停的邻边全画且加深，其余按类型淡画
   const focus = opts.hovered ?? opts.selected;
   const focusAdj = focus ? new Set((adj.get(focus.id) ?? []).map((x) => x.other.id)) : null;
-  ctx.lineWidth = 1 / scale;
+
+  // 边：二次贝塞尔弧线，控制点沿中垂线偏移；邻边提亮加粗
+  ctx.lineCap = "round";
   for (const e of edges) {
     if (!visible(e.k)) continue;
     const a = byId.get(e.s);
     const b = byId.get(e.t);
     if (!a || !b) continue;
+    if ((a.x < vx0 && b.x < vx0) || (a.x > vx1 && b.x > vx1) || (a.y < vy0 && b.y < vy0) || (a.y > vy1 && b.y > vy1)) continue;
     const isFocus = focusAdj && (a.id === focus?.id || b.id === focus?.id);
     const style = EDGE_STYLE[e.k];
-    ctx.globalAlpha = isFocus ? Math.min(1, style.alpha * 3) : focusAdj ? style.alpha * 0.5 : style.alpha;
+    ctx.globalAlpha = isFocus ? 0.75 : focusAdj ? style.alpha * 0.45 : style.alpha;
     ctx.strokeStyle = style.color;
+    ctx.lineWidth = (isFocus ? 1.6 : 1) / scale;
+    const mx = (a.x + b.x) / 2 + (b.y - a.y) * 0.1;
+    const my = (a.y + b.y) / 2 - (b.x - a.x) * 0.1;
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
+    ctx.quadraticCurveTo(mx, my, b.x, b.y);
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
 
-  // 节点：文章圆点用书架主题色，作者方点，实体空心圆；半径随度数
+  // 节点：√度数半径、全透明度饱和填充
+  const radiusOf = (n: SimNode) =>
+    n.k === "au" ? 4.5 + Math.sqrt(n.deg) * 1.4 : n.k === "e" ? 5 + Math.sqrt(n.n ?? 1) * 1.9 : 2.6 + Math.sqrt(n.deg) * 2.3;
   for (const n of nodes) {
+    if (!inView(n)) continue;
     const isFocus = !focusAdj || focusAdj.has(n.id) || n === focus;
-    const r = n.k === "au" ? 5 : n.k === "e" ? 4 + Math.min(6, Math.sqrt(n.n ?? 1) * 1.6) : 2.6 + Math.min(4, n.deg * 0.5);
-    ctx.globalAlpha = isFocus ? 1 : 0.28;
+    const r = radiusOf(n) + (n === opts.hovered ? 2 : 0);
+    ctx.globalAlpha = isFocus ? 1 : 0.1;
     ctx.beginPath();
     ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
     if (n.k === "e") {
-      ctx.strokeStyle = opts.community ? COMMUNITY_PALETTE[(opts.community.get(n.id) ?? 0) % COMMUNITY_PALETTE.length] : "#8a8474";
-      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = opts.community ? COMMUNITY_PALETTE[(opts.community.get(n.id) ?? 0) % COMMUNITY_PALETTE.length] : "#9a948a";
+      ctx.lineWidth = 1.6;
       ctx.stroke();
-    } else if (n.k === "au") {
-      ctx.fillStyle = opts.community ? COMMUNITY_PALETTE[(opts.community.get(n.id) ?? 0) % COMMUNITY_PALETTE.length] : "#5a5347";
-      ctx.fill();
     } else {
       ctx.fillStyle = opts.community
         ? COMMUNITY_PALETTE[(opts.community.get(n.id) ?? 0) % COMMUNITY_PALETTE.length]
-        : opts.colors[n.s ?? "unsorted"] ?? "#7b776f";
+        : n.k === "au"
+          ? "#b5ac9c"
+          : opts.colors[n.s ?? "unsorted"] ?? "#a39d92";
       ctx.fill();
     }
     if (n === opts.hovered || n === opts.selected) {
-      ctx.strokeStyle = "#1d1b18";
-      ctx.lineWidth = 1.6 / scale;
+      ctx.strokeStyle = "#f6f3ec";
+      ctx.lineWidth = 1.8 / scale;
       ctx.stroke();
     }
   }
   ctx.globalAlpha = 1;
 
-  // 标签：悬停/选中节点，和度数最高的枢纽
+  // 标签（LOD）：缩放越大阈值越低；悬停/选中与其邻域强制显示。
+  // 文字 = 节点同色的亮档，暗底 pill 衬托。
   ctx.textAlign = "center";
+  const labelDeg = Math.max(3, Math.round(9 - scale * 4));
   for (const n of nodes) {
-    const show = opts.labelsAll || n === opts.hovered || n === opts.selected || (n.k !== "a" && n.deg >= 6) || (n.k === "a" && n.deg >= 9);
+    if (!inView(n)) continue;
+    const isPicked = n === opts.hovered || n === opts.selected;
+    const inFocusZone = !focusAdj || focusAdj.has(n.id) || n === focus;
+    const show = opts.labelsAll || isPicked || (inFocusZone && (n.k !== "a" ? n.deg >= Math.max(2, labelDeg - 2) : n.deg >= labelDeg));
     if (!show) continue;
     const label = n.t.slice(0, 26);
     ctx.font = `${n.k === "a" ? 11 : 12.5}px sans-serif`;
     const w = ctx.measureText(label).width;
-    ctx.fillStyle = ground;
-    ctx.fillRect(n.x - w / 2 - 4, n.y - (n.k === "a" ? 16 : 22), w + 8, 15);
-    ctx.fillStyle = "#1d1b18";
-    ctx.fillText(label, n.x, n.y - (n.k === "a" ? 5 : -4));
+    const ly = n.y - radiusOf(n) - 6;
+    ctx.fillStyle = "rgba(22, 20, 18, 0.78)";
+    ctx.fillRect(n.x - w / 2 - 4, ly - 12, w + 8, 16);
+    ctx.fillStyle = isPicked ? "#f6f3ec" : "rgba(246, 243, 236, 0.82)";
+    ctx.fillText(label, n.x, ly);
   }
+  ctx.globalAlpha = 1;
   ctx.restore();
 }
 

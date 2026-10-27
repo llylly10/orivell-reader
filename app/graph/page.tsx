@@ -29,7 +29,7 @@ type GraphData = {
 
 type Mode = "galaxy" | "hubs" | "ego";
 
-const TOPIC_COLORS: Record<string, string> = Object.fromEntries(TOPICS.map((t) => [t.key, t.shades[0]]));
+const TOPIC_COLORS: Record<string, string> = Object.fromEntries(TOPICS.map((t) => [t.key, t.shades[1] ?? t.shades[0]]));
 const TOPIC_NAMES: Record<string, string> = Object.fromEntries(TOPICS.map((t) => [t.key, t.name]));
 
 const SHOW_DEFAULT = { quote: true, author: false, entity: true };
@@ -128,13 +128,57 @@ export default function GraphPage() {
     let worker: Worker | null = null;
     try {
       worker = new Worker(new URL("../../components/graph/layout.worker.ts", import.meta.url));
+      const simById = new Map(simNodes.map((n) => [n.id, n]));
       worker.onmessage = (e: MessageEvent) => {
         if (cancelled) return;
         const m = e.data as { type: string; p?: number; positions?: [string, number, number, number][] };
         if (m.type === "progress") setProgress(m.p ?? 0);
+        else if (m.type === "tick") {
+          // 活体沉降：应用中途坐标，适配视野并直接绘制（此时 scene 尚未建立）
+          for (const [id, x, y, deg] of m.positions ?? []) {
+            const n = simById.get(id);
+            if (n) {
+              n.x = x;
+              n.y = y;
+              n.deg = deg;
+            }
+          }
+          const wrap = wrapRef.current;
+          const canvas = canvasRef.current;
+          if (!wrap || !canvas) return;
+          const xs = simNodes.map((n) => n.x);
+          const ys = simNodes.map((n) => n.y);
+          const minX = Math.min(...xs), maxX = Math.max(...xs);
+          const minY = Math.min(...ys), maxY = Math.max(...ys);
+          const w = Math.max(240, maxX - minX + 200);
+          const h = Math.max(240, maxY - minY + 200);
+          const scale = Math.min(1.6, Math.min(wrap.clientWidth / w, wrap.clientHeight / h));
+          const ox = wrap.clientWidth / 2 - ((minX + maxX) / 2) * scale;
+          const oy = wrap.clientHeight / 2 - ((minY + maxY) / 2) * scale;
+          setView({ scale, ox, oy });
+          const dpr = Math.min(devicePixelRatio, 2);
+          canvas.width = wrap.clientWidth * dpr;
+          canvas.height = wrap.clientHeight * dpr;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return;
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          drawGraph(ctx, simNodes, simById, data.edges, new Map(), {
+            width: wrap.clientWidth,
+            height: wrap.clientHeight,
+            scale,
+            ox,
+            oy,
+            hovered: null,
+            selected: null,
+            colors: TOPIC_COLORS,
+            show: SHOW_DEFAULT,
+            ground: "#161412",
+          });
+          setProgress(m.p ?? 0);
+        }
         else if (m.type === "done") {
           for (const [id, x, y, deg] of m.positions ?? []) {
-            const n = simNodes.find((s) => s.id === id);
+            const n = simById.get(id);
             if (n) {
               n.x = x;
               n.y = y;
@@ -489,7 +533,7 @@ export default function GraphPage() {
       </div>
 
       <div className="mx-5 mb-3 mt-2.5 flex min-h-0 flex-1 gap-3">
-        <div ref={wrapRef} className="relative min-h-0 flex-1 cursor-grab overflow-hidden rounded-[14px] bg-bg-raised active:cursor-grabbing" onMouseMove={onMove} onMouseDown={onDown} onMouseUp={onUp} onMouseLeave={onUp} onClick={onClick} onWheel={onWheel}>
+        <div ref={wrapRef} style={{ background: "#161412" }} className="relative min-h-0 flex-1 cursor-grab overflow-hidden rounded-[14px] active:cursor-grabbing" onMouseMove={onMove} onMouseDown={onDown} onMouseUp={onUp} onMouseLeave={onUp} onClick={onClick} onWheel={onWheel}>
           <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
           {progress > 0 && progress < 1 && mode === "galaxy" && (
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-[10px] border border-rule bg-bg px-4 py-3 text-[13px] text-ink-2">

@@ -19,9 +19,10 @@ self.onmessage = (e: MessageEvent) => {
   let last = 0;
   const onProgress = (p: number) => {
     const now = Date.now();
-    if (now - last > 150) {
+    if (now - last > 140) {
       last = now;
-      (self as unknown as Worker).postMessage({ type: "progress", p });
+      const positions = sim.map((n) => [n.id, Math.round(n.x * 10) / 10, Math.round(n.y * 10) / 10, n.deg]);
+      (self as unknown as Worker).postMessage({ type: "tick", p, positions });
     }
   };
   const run = mode === "topic" ? computeTopicLayout(sim, edges, tick, onProgress) : computeLayout(sim, edges, tick, onProgress);

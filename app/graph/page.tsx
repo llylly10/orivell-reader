@@ -29,7 +29,7 @@ type GraphData = {
 
 type Mode = "galaxy" | "hubs" | "ego";
 
-const TOPIC_COLORS: Record<string, string> = Object.fromEntries(TOPICS.map((t) => [t.key, t.shades[1] ?? t.shades[0]]));
+const TOPIC_COLORS: Record<string, string> = Object.fromEntries(TOPICS.map((t) => [t.key, t.shades[0]]));
 const TOPIC_NAMES: Record<string, string> = Object.fromEntries(TOPICS.map((t) => [t.key, t.name]));
 
 const SHOW_DEFAULT = { quote: true, author: false, entity: true };
@@ -172,7 +172,7 @@ export default function GraphPage() {
             selected: null,
             colors: TOPIC_COLORS,
             show: SHOW_DEFAULT,
-            ground: "#161412",
+            ground: "#fcfaf6",
           });
           setProgress(m.p ?? 0);
         }

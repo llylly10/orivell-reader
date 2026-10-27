@@ -162,7 +162,7 @@ export function drawGraph(
     ground?: string;
   },
 ) {
-  const { width, height, scale, ox, oy, ground = "#161412" } = opts;
+  const { width, height, scale, ox, oy, ground = "#fcfaf6" } = opts;
   ctx.save();
   ctx.clearRect(0, 0, width, height);
   ctx.translate(ox, oy);
@@ -212,7 +212,7 @@ export function drawGraph(
     ctx.beginPath();
     ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
     if (n.k === "e") {
-      ctx.strokeStyle = opts.community ? COMMUNITY_PALETTE[(opts.community.get(n.id) ?? 0) % COMMUNITY_PALETTE.length] : "#9a948a";
+      ctx.strokeStyle = opts.community ? COMMUNITY_PALETTE[(opts.community.get(n.id) ?? 0) % COMMUNITY_PALETTE.length] : "#8a8474";
       ctx.lineWidth = 1.6;
       ctx.stroke();
     } else {
@@ -220,11 +220,11 @@ export function drawGraph(
         ? COMMUNITY_PALETTE[(opts.community.get(n.id) ?? 0) % COMMUNITY_PALETTE.length]
         : n.k === "au"
           ? "#b5ac9c"
-          : opts.colors[n.s ?? "unsorted"] ?? "#a39d92";
+          : opts.colors[n.s ?? "unsorted"] ?? "#7b776f";
       ctx.fill();
     }
     if (n === opts.hovered || n === opts.selected) {
-      ctx.strokeStyle = "#f6f3ec";
+      ctx.strokeStyle = "#1d1b18";
       ctx.lineWidth = 1.8 / scale;
       ctx.stroke();
     }
@@ -245,9 +245,9 @@ export function drawGraph(
     ctx.font = `${n.k === "a" ? 11 : 12.5}px sans-serif`;
     const w = ctx.measureText(label).width;
     const ly = n.y - radiusOf(n) - 6;
-    ctx.fillStyle = "rgba(22, 20, 18, 0.78)";
+    ctx.fillStyle = ground;
     ctx.fillRect(n.x - w / 2 - 4, ly - 12, w + 8, 16);
-    ctx.fillStyle = isPicked ? "#f6f3ec" : "rgba(246, 243, 236, 0.82)";
+    ctx.fillStyle = "#1d1b18";
     ctx.fillText(label, n.x, ly);
   }
   ctx.globalAlpha = 1;

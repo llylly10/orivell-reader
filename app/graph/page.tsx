@@ -282,6 +282,11 @@ export default function GraphPage() {
     return { nodes, byId, edges, adj };
   }, [mode, data, layout, kinds, minDeg, query, show, egoId, expandedHub, articlesOfEntity]);
 
+  // 场景同步到 ref：节点拖拽等命令式重绘从这里读最新场景
+  useEffect(() => {
+    sceneRef.current = scene;
+  }, [scene]);
+
   // 视图适配：场景变化时自动居中缩放
   useEffect(() => {
     if (!scene || !scene.nodes.length) return;

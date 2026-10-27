@@ -9,11 +9,13 @@ import { computeLayout, computeTopicLayout } from "./graph-engine";
 type InNode = { id: string; k: "a" | "au" | "e"; t: string; s?: string; n?: number };
 
 self.onmessage = (e: MessageEvent) => {
-  const { mode, nodes, edges, tick } = e.data as {
+  const { mode, nodes, edges, tick, params, fromCurrent } = e.data as {
     mode?: "plain" | "topic";
     nodes: InNode[];
     edges: { s: string; t: string; k: "quote" | "author" | "entity" }[];
     tick: number;
+    params?: { repel?: number; linkDist?: number; centerK?: number };
+    fromCurrent?: boolean;
   };
   const sim = nodes.map((n) => ({ ...n, x: 0, y: 0, vx: 0, vy: 0, deg: 0 }));
   let last = 0;
@@ -25,7 +27,9 @@ self.onmessage = (e: MessageEvent) => {
       (self as unknown as Worker).postMessage({ type: "tick", p, positions });
     }
   };
-  const run = mode === "topic" ? computeTopicLayout(sim, edges, tick, onProgress) : computeLayout(sim, edges, tick, onProgress);
+  const run = mode === "topic"
+    ? computeTopicLayout(sim, edges, tick, onProgress, params, fromCurrent)
+    : computeLayout(sim, edges, tick, onProgress);
   void run.adj;
   const positions = sim.map((n) => [n.id, Math.round(n.x * 10) / 10, Math.round(n.y * 10) / 10, n.deg]);
   (self as unknown as Worker).postMessage({ type: "done", positions });

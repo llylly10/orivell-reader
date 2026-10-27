@@ -63,6 +63,12 @@ export default function GraphPage() {
   const [extracting, setExtracting] = useState(false);
   const [extractMsg, setExtractMsg] = useState<string | null>(null);
   const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+  const [nodeScale, setNodeScale] = useState(1);
+  const [linkWidth, setLinkWidth] = useState(1);
+  const [forces, setForces] = useState({ repel: 1500, linkDist: 80, centerK: 0.02 });
+  const forcesChangedRef = useRef(false);
+  const dragNodeRef = useRef<SimNode | null>(null);
+  const sceneRef = useRef<{ nodes: SimNode[]; byId: Map<string, SimNode>; edges: GraphEdge[]; adj: Map<string, { other: SimNode; k: GraphEdge["k"] }[]> } | null>(null);
 
   const load = useCallback(() => {
     fetch("/api/graph")
@@ -196,7 +202,7 @@ export default function GraphPage() {
           settle();
         }
       };
-      worker.postMessage({ mode: "topic", nodes: data.nodes, edges: data.edges, tick: 240 });
+      worker.postMessage({ mode: "topic", nodes: data.nodes, edges: data.edges, tick: 240, params: forces, fromCurrent: false });
     } catch {
       computeTopicLayout(simNodes, data.edges, 240);
       settle();
@@ -205,7 +211,7 @@ export default function GraphPage() {
       cancelled = true;
       worker?.terminate();
     };
-  }, [data, mode]);
+  }, [data, mode, forces]);
 
   // ── 场景：每模式各自的可见节点/边 ──
   const scene = useMemo(() => {
@@ -373,6 +379,12 @@ export default function GraphPage() {
       return { scale, ox: mx - (mx - v.ox) * k, oy: my - (my - v.oy) * k };
     });
   };
+  const onDblClick = (e: React.MouseEvent) => {
+    if (!scene) return;
+    const pt = toWorld(e.clientX, e.clientY);
+    const hit = hitTest(scene.nodes, pt.x, pt.y, view.scale);
+    if (hit && hit.k === "a") window.location.href = `/read/${encodeURIComponent(hit.id)}`;
+  };
   const onClick = (e: React.MouseEvent) => {
     if (!scene || dragRef.current) return;
     const p = toWorld(e.clientX, e.clientY);
@@ -503,6 +515,24 @@ export default function GraphPage() {
               <input type="range" min={0} max={8} value={minDeg} onChange={(e) => setMinDeg(Number(e.target.value))} className="h-1 w-16 accent-[var(--rubric)]" aria-label={t("graph.minDegree")} />
               <span className="w-3 tabular-nums">{minDeg}</span>
             </label>
+            <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
+            <label className="flex items-center gap-1.5 text-[12px] text-ink-3">
+              {t("graph.nodeSize")}
+              <input type="range" min={0.5} max={2} step={0.1} value={nodeScale} onChange={(e) => setNodeScale(Number(e.target.value))} className="h-1 w-16 accent-[var(--rubric)]" aria-label={t("graph.nodeSize")} />
+            </label>
+            <label className="flex items-center gap-1.5 text-[12px] text-ink-3">
+              {t("graph.linkWidth")}
+              <input type="range" min={0.5} max={3} step={0.1} value={linkWidth} onChange={(e) => setLinkWidth(Number(e.target.value))} className="h-1 w-16 accent-[var(--rubric)]" aria-label={t("graph.linkWidth")} />
+            </label>
+            <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
+            <label className="flex items-center gap-1.5 text-[12px] text-ink-3">
+              {t("graph.repel")}
+              <input type="range" min={800} max={4000} step={100} value={forces.repel} onChange={(e) => { forcesChangedRef.current = true; setForces((f) => ({ ...f, repel: Number(e.target.value) })); }} className="h-1 w-16 accent-[var(--rubric)]" aria-label={t("graph.repel")} />
+            </label>
+            <label className="flex items-center gap-1.5 text-[12px] text-ink-3">
+              {t("graph.linkDist")}
+              <input type="range" min={40} max={200} step={10} value={forces.linkDist} onChange={(e) => { forcesChangedRef.current = true; setForces((f) => ({ ...f, linkDist: Number(e.target.value) })); }} className="h-1 w-16 accent-[var(--rubric)]" aria-label={t("graph.linkDist")} />
+            </label>
           </>
         )}
         {mode === "ego" && (
@@ -533,7 +563,7 @@ export default function GraphPage() {
       </div>
 
       <div className="mx-5 mb-3 mt-2.5 flex min-h-0 flex-1 gap-3">
-        <div ref={wrapRef} className="relative min-h-0 flex-1 cursor-grab overflow-hidden rounded-[14px] bg-bg-raised active:cursor-grabbing" onMouseMove={onMove} onMouseDown={onDown} onMouseUp={onUp} onMouseLeave={onUp} onClick={onClick} onWheel={onWheel}>
+        <div ref={wrapRef} className="relative min-h-0 flex-1 cursor-grab overflow-hidden rounded-[14px] bg-bg-raised active:cursor-grabbing" onMouseMove={onMove} onMouseDown={onDown} onMouseUp={onUp} onDoubleClick={onDblClick} onMouseLeave={onUp} onClick={onClick}  onWheel={onWheel}>
           <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
           {progress > 0 && progress < 1 && mode === "galaxy" && (
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-[10px] border border-rule bg-bg px-4 py-3 text-[13px] text-ink-2">

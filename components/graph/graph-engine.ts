@@ -160,9 +160,13 @@ export function drawGraph(
     labelsAll?: boolean;
     /** 画布底色（标签底衬用它） */
     ground?: string;
+    /** 节点大小倍率 */
+    nodeScale?: number;
+    /** 连线粗细倍率 */
+    linkWidth?: number;
   },
 ) {
-  const { width, height, scale, ox, oy, ground = "#fcfaf6" } = opts;
+  const { width, height, scale, ox, oy, ground = "#fcfaf6", nodeScale = 1, linkWidth = 1 } = opts;
   ctx.save();
   ctx.clearRect(0, 0, width, height);
   ctx.translate(ox, oy);
@@ -191,7 +195,7 @@ export function drawGraph(
     const style = EDGE_STYLE[e.k];
     ctx.globalAlpha = isFocus ? 0.75 : focusAdj ? style.alpha * 0.45 : style.alpha;
     ctx.strokeStyle = style.color;
-    ctx.lineWidth = (isFocus ? 1.6 : 1) / scale;
+    ctx.lineWidth = ((isFocus ? 1.6 : 1) * linkWidth) / scale;
     const mx = (a.x + b.x) / 2 + (b.y - a.y) * 0.1;
     const my = (a.y + b.y) / 2 - (b.x - a.x) * 0.1;
     ctx.beginPath();
@@ -207,7 +211,7 @@ export function drawGraph(
   for (const n of nodes) {
     if (!inView(n)) continue;
     const isFocus = !focusAdj || focusAdj.has(n.id) || n === focus;
-    const r = radiusOf(n) + (n === opts.hovered ? 2 : 0);
+    const r = (radiusOf(n) + (n === opts.hovered ? 2 : 0)) * nodeScale;
     ctx.globalAlpha = isFocus ? 1 : 0.1;
     ctx.beginPath();
     ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
@@ -269,7 +273,16 @@ export function hitTest(nodes: SimNode[], mx: number, my: number, scale: number)
 
 /** 按主题聚簇的布局：文章被吸到各自主题的重心，24 个主题形成明显分开的星团。
  *  作者/实体节点靠边弹簧自然附着到它们连接的文章附近。 */
-export function computeTopicLayout(nodes: SimNode[], edges: GraphEdge[], tick = 240, onProgress?: (p: number) => void) {
+export function computeTopicLayout(
+  nodes: SimNode[],
+  edges: GraphEdge[],
+  tick = 240,
+  onProgress?: (p: number) => void,
+  /** 力学参数（Obsidian 式可调）：斥力基准 / 边理想距离 / 向心系数 */
+  params?: { repel?: number; linkDist?: number; centerK?: number },
+  /** 从节点当前坐标继续布局（滑杆微调用），否则圆盘随机初始化 */
+  fromCurrent = false,
+) {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const W = 3200;
   const H = 2100;
@@ -296,7 +309,7 @@ export function computeTopicLayout(nodes: SimNode[], edges: GraphEdge[], tick = 
   const adj = buildAdjacency(nodes, edges);
   for (let i = 0; i < tick; i++) {
     const cool = 1 - i / tick;
-    repulsionTick(nodes, 70, 1500 * cool);
+    repulsionTick(nodes, 70, (params?.repel ?? 1500) * cool);
     for (const e of edges) {
       const a = byId.get(e.s);
       const b = byId.get(e.t);
@@ -304,7 +317,7 @@ export function computeTopicLayout(nodes: SimNode[], edges: GraphEdge[], tick = 
       const dx = b.x - a.x;
       const dy = b.y - a.y;
       const d = Math.sqrt(dx * dx + dy * dy) || 1;
-      const f = ((d - 80) / d) * 0.012;
+      const f = ((d - (params?.linkDist ?? 80)) / d) * 0.012;
       a.vx += dx * f;
       a.vy += dy * f;
       b.vx -= dx * f;

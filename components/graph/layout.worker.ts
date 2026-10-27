@@ -18,14 +18,10 @@ self.onmessage = (e: MessageEvent) => {
     fromCurrent?: boolean;
   };
   const sim = nodes.map((n) => ({ ...n, x: 0, y: 0, vx: 0, vy: 0, deg: 0 }));
-  let last = 0;
+  // 快照流：每 2 tick 回传一次中途坐标——主线程逐帧重绘，节点呈「游动沉降」
   const onProgress = (p: number) => {
-    const now = Date.now();
-    if (now - last > 140) {
-      last = now;
-      const positions = sim.map((n) => [n.id, Math.round(n.x * 10) / 10, Math.round(n.y * 10) / 10, n.deg]);
-      (self as unknown as Worker).postMessage({ type: "tick", p, positions });
-    }
+    const positions = sim.map((n) => [n.id, Math.round(n.x * 10) / 10, Math.round(n.y * 10) / 10, n.deg]);
+    (self as unknown as Worker).postMessage({ type: "tick", p, positions });
   };
   const run = mode === "topic"
     ? computeTopicLayout(sim, edges, tick, onProgress, params, fromCurrent)

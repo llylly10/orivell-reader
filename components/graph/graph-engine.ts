@@ -120,7 +120,7 @@ export function computeLayout(nodes: SimNode[], edges: GraphEdge[], tick = 220, 
       n.x += Math.max(-24, Math.min(24, n.vx));
       n.y += Math.max(-24, Math.min(24, n.vy));
     }
-    if (i % 20 === 0) onProgress?.(i / tick);
+    onProgress?.(i / tick);
   }
   onProgress?.(1);
   return { adj, byId };

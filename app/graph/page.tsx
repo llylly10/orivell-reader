@@ -533,7 +533,7 @@ export default function GraphPage() {
       </div>
 
       <div className="mx-5 mb-3 mt-2.5 flex min-h-0 flex-1 gap-3">
-        <div ref={wrapRef} style={{ background: "#161412" }} className="relative min-h-0 flex-1 cursor-grab overflow-hidden rounded-[14px] active:cursor-grabbing" onMouseMove={onMove} onMouseDown={onDown} onMouseUp={onUp} onMouseLeave={onUp} onClick={onClick} onWheel={onWheel}>
+        <div ref={wrapRef} className="relative min-h-0 flex-1 cursor-grab overflow-hidden rounded-[14px] bg-bg-raised active:cursor-grabbing" onMouseMove={onMove} onMouseDown={onDown} onMouseUp={onUp} onMouseLeave={onUp} onClick={onClick} onWheel={onWheel}>
           <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
           {progress > 0 && progress < 1 && mode === "galaxy" && (
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-[10px] border border-rule bg-bg px-4 py-3 text-[13px] text-ink-2">

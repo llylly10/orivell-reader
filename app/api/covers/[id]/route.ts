@@ -1,11 +1,12 @@
-import { auth } from "@clerk/nextjs/server";
+import { currentUser } from "@/lib/session";
 import { hasDatabase, loadCover } from "@/lib/db";
 
 export const runtime = "nodejs";
 
 /** A cover painted on another device, from the reader's account. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { userId } = await auth();
+const me = await currentUser();
+  const userId = me?.id ?? null;
   if (!userId) return Response.json({ error: "Sign in to sync." }, { status: 401 });
   if (!hasDatabase()) return Response.json({ error: "No database is configured, so nothing syncs." }, { status: 503 });
   const jpeg = await loadCover(userId, (await params).id);

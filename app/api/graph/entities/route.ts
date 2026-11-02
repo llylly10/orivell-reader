@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { currentUser } from "@/lib/session";
 import { completeJSON } from "@/lib/together";
 import { db } from "@/lib/db";
 
@@ -33,7 +33,8 @@ function canonicalName(raw: string): string {
 
 /** 实体抽取进度：已抽取的文章数 / 总文章数 */
 export async function GET() {
-  const { userId } = await auth();
+const me = await currentUser();
+  const userId = me?.id ?? null;
   if (!userId) return Response.json({ error: "Sign in first." }, { status: 401 });
   const done = await db()`
     select count(distinct article_id)::int n from entities where user_id = ${userId}`;
@@ -44,7 +45,8 @@ export async function GET() {
 
 /** 抽一批（服务端自取未抽取的下 20 篇）：浏览器三件套出模型，结果落 entities。 */
 export async function POST(req: Request) {
-  const { userId } = await auth();
+const me = await currentUser();
+  const userId = me?.id ?? null;
   if (!userId) return Response.json({ error: "Sign in first." }, { status: 401 });
   let body: { baseUrl?: string; apiKey?: string; modelName?: string };
   try {

@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { currentUser } from "@/lib/session";
 import { db } from "@/lib/db";
 import { canonicalUrl, textHash } from "@/lib/normalize";
 
@@ -15,7 +15,8 @@ type Related = { id: string; title: string; url: string; author: string; source:
  * 纯 SQL 信号，零额外成本；语义（pgvector）另线再接。
  */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { userId } = await auth();
+const me = await currentUser();
+  const userId = me?.id ?? null;
   if (!userId) return Response.json({ error: "Sign in first." }, { status: 401 });
   const { id } = await params;
 

@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { currentUser } from "@/lib/session";
 import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -23,7 +23,8 @@ async function fingerprint(userId: string): Promise<string> {
 }
 
 export async function GET() {
-  const { userId } = await auth();
+const me = await currentUser();
+  const userId = me?.id ?? null;
   if (!userId) return Response.json({ error: "Sign in first." }, { status: 401 });
 
   const fp = await fingerprint(userId);
@@ -76,7 +77,7 @@ export async function GET() {
   for (const e of ents) {
     const eid = `e:${e.name}`;
     nodes.push({ id: eid, k: "e", t: String(e.label), n: Number(e.n) });
-    for (const a of e.arts ?? []) edges.push({ s: eid, t: String(a), k: "entity" });
+    for (const a of (e.arts as string[] | undefined) ?? []) edges.push({ s: eid, t: String(a), k: "entity" });
   }
 
   const extracted = await db()`
@@ -88,7 +89,7 @@ export async function GET() {
     ok: true,
     nodes,
     edges,
-    progress: { extracted: extracted[0].n, total: total[0].n },
+    progress: { extracted: Number(extracted[0].n), total: Number(total[0].n) },
   };
   cache.set(fp, { fp, payload });
   return Response.json(payload);

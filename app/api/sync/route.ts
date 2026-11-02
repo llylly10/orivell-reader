@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { currentUser } from "@/lib/session";
 import { hasDatabase, isCollection, pullRows, pushRows, type Collection, type PushRow } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -22,7 +22,8 @@ const NO_DATABASE = { error: "No database is configured, so nothing syncs." };
  * time from /api/articles/[id], so a big shelf never makes a huge response.
  */
 export async function GET(req: Request) {
-  const { userId } = await auth();
+const me = await currentUser();
+  const userId = me?.id ?? null;
   if (!userId) return Response.json({ error: "Sign in to sync." }, { status: 401 });
   if (!hasDatabase()) return Response.json(NO_DATABASE, { status: 503 });
   const raw = new URL(req.url).searchParams.get("since");
@@ -32,7 +33,8 @@ export async function GET(req: Request) {
 
 /** Push: upsert the rows a device changed. */
 export async function POST(req: Request) {
-  const { userId } = await auth();
+const me = await currentUser();
+  const userId = me?.id ?? null;
   if (!userId) return Response.json({ error: "Sign in to sync." }, { status: 401 });
   if (!hasDatabase()) return Response.json(NO_DATABASE, { status: 503 });
   if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY) return Response.json({ error: "Too large." }, { status: 413 });

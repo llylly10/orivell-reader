@@ -68,7 +68,7 @@ export async function POST(req: Request) {
   const offerTool = !forced && searchEnabled() && body.search !== false;
   const latest = [...history].reverse().find((m) => m.role === "user")?.content;
   const length = isLengthKey(body.length) ? body.length : "normal";
-  const maxTokens = body.length === "long" ? 1400 : 900;
+  const maxTokens = body.length === "full" ? 2400 : body.length === "long" ? 1400 : 900;
 
   const encoder = new TextEncoder();
   const send = (e: StreamEvent) => encoder.encode(`data: ${JSON.stringify(e)}\n\n`);

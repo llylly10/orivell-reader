@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { currentUser } from "@/lib/session";
 import { makeToken } from "@/lib/agent";
 import { createToken, hasDatabase, listTokens, revokeToken } from "@/lib/db";
 
@@ -15,14 +15,16 @@ const NO_DATABASE = { error: "No database is configured, so agent connections ar
 
 /** The reader's agent connections: list them, make one (its token shown once), or revoke one. */
 export async function GET() {
-  const { userId } = await auth();
+const me = await currentUser();
+  const userId = me?.id ?? null;
   if (!userId) return Response.json({ error: "Sign in to connect an agent." }, { status: 401 });
   if (!hasDatabase()) return Response.json(NO_DATABASE, { status: 503 });
   return Response.json({ tokens: await listTokens(userId) });
 }
 
 export async function POST(req: Request) {
-  const { userId } = await auth();
+const me = await currentUser();
+  const userId = me?.id ?? null;
   if (!userId) return Response.json({ error: "Sign in to connect an agent." }, { status: 401 });
   if (!hasDatabase()) return Response.json(NO_DATABASE, { status: 503 });
   const body = (await req.json().catch(() => ({}))) as { label?: string };
@@ -34,7 +36,8 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const { userId } = await auth();
+const me = await currentUser();
+  const userId = me?.id ?? null;
   if (!userId) return Response.json({ error: "Sign in first." }, { status: 401 });
   if (!hasDatabase()) return Response.json(NO_DATABASE, { status: 503 });
   const id = new URL(req.url).searchParams.get("id") ?? "";

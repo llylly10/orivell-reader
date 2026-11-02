@@ -1,11 +1,12 @@
-import { auth } from "@clerk/nextjs/server";
+import { currentUser } from "@/lib/session";
 import { articleDoc, hasDatabase } from "@/lib/db";
 
 export const runtime = "nodejs";
 
 /** One imported text from the reader's account, for a device that has the shelf entry but not the text. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { userId } = await auth();
+const me = await currentUser();
+  const userId = me?.id ?? null;
   if (!userId) return Response.json({ error: "Sign in to sync." }, { status: 401 });
   if (!hasDatabase()) return Response.json({ error: "No database is configured, so nothing syncs." }, { status: 503 });
   const doc = await articleDoc(userId, (await params).id);

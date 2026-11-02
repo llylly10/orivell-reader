@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { auth } from "@clerk/nextjs/server";
+import { currentUser } from "@/lib/session";
 import { db } from "@/lib/db";
 import { completeJSON } from "@/lib/together";
 
@@ -32,7 +32,8 @@ function groupHash(items: GroupIn["items"]): string {
  * 判定只是建议——合并与否始终由设置页里的人决定。
  */
 export async function POST(req: Request) {
-  const { userId } = await auth();
+const me = await currentUser();
+  const userId = me?.id ?? null;
   if (!userId) return Response.json({ error: "Sign in first." }, { status: 401 });
   let body: { groups?: GroupIn[]; baseUrl?: string; apiKey?: string; modelName?: string };
   try {
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
       select verdict, reason from dup_verdicts
       where user_id = ${userId} and group_hash = ${gh} and prompt_version = ${PROMPT_VERSION}`;
     if (cached[0]) {
-      verdicts.push({ verdict: cached[0].verdict, reason: String(cached[0].reason ?? ""), cached: true });
+      verdicts.push({ verdict: String(cached[0].verdict), reason: String(cached[0].reason ?? ""), cached: true });
       continue;
     }
 

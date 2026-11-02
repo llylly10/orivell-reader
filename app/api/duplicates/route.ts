@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { currentUser } from "@/lib/session";
 import { db } from "@/lib/db";
 import { canonicalUrl } from "@/lib/normalize";
 
@@ -31,7 +31,8 @@ function trigrams(s: string): Set<string> {
  * 绝不自动删除——合并由设置页人工确认。
  */
 export async function GET() {
-  const { userId } = await auth();
+const me = await currentUser();
+  const userId = me?.id ?? null;
   if (!userId) return Response.json({ error: "Sign in to scan." }, { status: 401 });
 
   const rows = await db()`
@@ -134,7 +135,8 @@ export async function GET() {
 
 /** 合并：保留 keep，其余墓碑下架（划线批注跟随文章，随 sync 同步到所有设备）。 */
 export async function POST(req: Request) {
-  const { userId } = await auth();
+const me = await currentUser();
+  const userId = me?.id ?? null;
   if (!userId) return Response.json({ error: "Sign in first." }, { status: 401 });
   let body: { keep?: string; drop?: string[] };
   try {

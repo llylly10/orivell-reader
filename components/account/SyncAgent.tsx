@@ -1,18 +1,18 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
 import { useEffect } from "react";
 import { useStore } from "@/lib/store";
+import { useViewer } from "@/lib/viewer";
 import { startSync } from "@/lib/sync";
 
 /** Runs account sync while someone is signed in. Renders nothing. */
 export function SyncAgent() {
-  const { isLoaded, isSignedIn, userId } = useAuth();
+  const { loaded, id } = useViewer();
   useEffect(() => {
-    if (!isLoaded || !isSignedIn || !userId) return;
+    if (!loaded || !id) return;
     useStore.getState().hydrate();
-    const s = startSync(userId);
+    const s = startSync(id);
     return () => s.stop();
-  }, [isLoaded, isSignedIn, userId]);
+  }, [loaded, id]);
   return null;
 }

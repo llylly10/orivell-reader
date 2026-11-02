@@ -8,7 +8,7 @@ export const maxDuration = 300;
 
 /**
  * "Read it more carefully": a PDF read again by LlamaParse, for layouts the
- * free reader gets wrong. It runs on Gloss's LlamaParse key, but only for
+ * free reader gets wrong. It runs on Orivell's LlamaParse key, but only for
  * readers who have added their own Together key; they get a daily page cap.
  */
 // Agentic scored 8.1/10 against cost_effective's 6.9 in scripts/pdf-eval, at $0.0125 a page against $0.0037.
@@ -62,7 +62,7 @@ async function record(subject: string, pages: number, usd: number) {
 
 export async function POST(req: Request) {
   const key = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "").trim();
-  if (!key) return Response.json({ error: "Reading carefully needs your Together key. Add it from the key button.", code: "need_key" }, { status: 401 });
+  if (!key) return Response.json({ error: "Reading carefully needs your API key. Add it from the key button.", code: "need_key" }, { status: 401 });
   if (Number(req.headers.get("content-length") ?? 0) > MAX_BYTES + 10_000) return tooLarge();
 
   let file: File | null = null;
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
   if (!file) return Response.json({ error: "Send the PDF as a file." }, { status: 400 });
   if (file.size > MAX_BYTES) return tooLarge();
 
-  if (!(await togetherKeyWorks(key))) return Response.json({ error: "Together did not accept your key. Check it in the key menu.", code: "need_key" }, { status: 401 });
+  if (!(await togetherKeyWorks(key))) return Response.json({ error: "That key was not accepted. Check it in the key menu.", code: "need_key" }, { status: 401 });
 
   const subject = `careful:${hash(key)}`;
   const used = await pagesToday(subject);

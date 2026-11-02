@@ -3,10 +3,12 @@ import Script from "next/script";
 import { Atkinson_Hyperlegible_Next, Literata, Newsreader, Schibsted_Grotesk } from "next/font/google";
 import { BOOT_SCRIPT } from "@/lib/settings";
 import "./globals.css";
+import { InlineScript } from "@/components/ui/InlineScript";
 import { Tooltips } from "@/components/ui/Tooltips";
-import { ClerkLocaleProvider } from "@/components/account/ClerkLocaleProvider";
 import { SyncAgent } from "@/components/account/SyncAgent";
 import { SyncNotice } from "@/components/account/SyncNotice";
+import { ViewerProvider } from "@/lib/viewer";
+import { currentUser } from "@/lib/session";
 import { OG_IMAGE, SITE_URL } from "@/lib/brand";
 import { LangProvider } from "@/lib/lang-context";
 import { DevPanel } from "@/components/ui/DevPanel";
@@ -44,15 +46,15 @@ const legible = Atkinson_Hyperlegible_Next({
   adjustFontFallback: false,
 });
 
-const DESCRIPTION = "Highlight any line and ask it anything. An open model writes the answer in the margin, beside the words, citing the paragraphs it used.";
+const DESCRIPTION = "Explore ideas, deeply. Highlight any line and ask it anything. An open model writes the answer in the margin, beside the words, citing the paragraphs it used.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: { default: "Gloss", template: "%s" },
+  title: { default: "Orivell", template: "%s" },
   description: DESCRIPTION,
-  applicationName: "Gloss",
-  openGraph: { type: "website", siteName: "Gloss", title: "Gloss", description: DESCRIPTION, url: "/", images: [OG_IMAGE] },
-  twitter: { card: "summary_large_image", title: "Gloss", description: DESCRIPTION, images: [OG_IMAGE.url] },
+  applicationName: "Orivell",
+  openGraph: { type: "website", siteName: "Orivell", title: "Orivell", description: DESCRIPTION, url: "/", images: [OG_IMAGE] },
+  twitter: { card: "summary_large_image", title: "Orivell", description: DESCRIPTION, images: [OG_IMAGE.url] },
 };
 
 export const viewport: Viewport = {
@@ -62,22 +64,25 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const me = await currentUser();
   return (
     <html lang="en" className={`${serif.variable} ${sans.variable} ${book.variable} ${legible.variable}`} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: BOOT_SCRIPT }} />
+        <InlineScript html={BOOT_SCRIPT} />
       </head>
       <body>
-        {/* The language sits outside Clerk so that Clerk's own strings can
-            follow it: Clerk reads the language from the same context. */}
+        {/* The language provider sits above everything, so every string —
+            including the sign-in form — follows the reader's choice. The
+            viewer is seeded from the session server-side, so the top bar
+            never flickers. */}
         <LangProvider>
-          <ClerkLocaleProvider>
+          <ViewerProvider initial={{ id: me?.id ?? null, name: me?.name ?? null, email: me?.email ?? "", avatar: me?.avatar ?? null }}>
             {children}
             <SyncAgent />
             <SyncNotice />
             <DevPanel />
-          </ClerkLocaleProvider>
+          </ViewerProvider>
         </LangProvider>
         <Tooltips />
         {/* Plausible: cookieless page views, from the production site only, so previews and local runs never count. */}

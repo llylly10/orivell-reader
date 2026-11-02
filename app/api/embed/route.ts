@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { currentUser } from "@/lib/session";
 import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -21,7 +21,8 @@ const vec = (v: number[]) => `[${v.map((x) => (Number.isFinite(x) ? x.toFixed(6)
 
 /** 语义索引进度：已索引 / 总文章数 */
 export async function GET() {
-  const { userId } = await auth();
+const me = await currentUser();
+  const userId = me?.id ?? null;
   if (!userId) return Response.json({ error: "Sign in first." }, { status: 401 });
   const done = await db()`select count(*)::int n from embeddings where user_id = ${userId}`;
   const total = await db()`select count(*)::int n from articles where user_id = ${userId} and deleted = false`;
@@ -29,7 +30,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { userId } = await auth();
+const me = await currentUser();
+  const userId = me?.id ?? null;
   if (!userId) return Response.json({ error: "Sign in first." }, { status: 401 });
   let body: { baseUrl?: string; apiKey?: string; model?: string };
   try {

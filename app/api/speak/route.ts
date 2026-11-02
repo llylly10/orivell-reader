@@ -23,7 +23,7 @@ export async function POST(req: Request) {
   const headerKey = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "").trim();
   // Reading aloud is never on the shared key: a minute of voice costs more than a day of free answers.
   const apiKey = body.apiKey?.trim() || headerKey || undefined;
-  if (!apiKey) return needKey(null, "Reading aloud uses your own Together API key. Add it to listen.");
+  if (!apiKey) return needKey(null, "Reading aloud uses your own API key. Add it to listen.");
 
   let res: Response;
   try {
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
       const j = (await res.json()) as { error?: { message?: string } | string };
       msg = typeof j.error === "string" ? j.error : j.error?.message ?? msg;
     } catch {}
-    if (res.status === 401) msg = "Together rejected that API key. Check it and try again.";
+    if (res.status === 401) msg = "That API key was rejected. Check it and try again.";
     return Response.json({ error: msg }, { status: res.status === 401 || res.status === 429 ? res.status : 502 });
   }
   return new Response(res.body, { headers: { "Content-Type": "audio/mpeg", "Cache-Control": "no-store" } });

@@ -154,3 +154,46 @@ create table if not exists embed_mean (
   mean vector(1024) not null,
   n int not null default 0
 );
+
+-- Accounts for Gloss readers. One row per person; the id is what every other
+-- table's user_id column points at, replacing Clerk's user ids. Password
+-- hashes are scrypt with a per-user salt, never the password itself.
+create table if not exists users (
+  id text primary key,             -- "usr_" + 16 random bytes, base64url
+  email text not null unique,      -- lowercased; the login name
+  name text,
+  hash text not null,              -- "scrypt$N$r$p$salt$derived", base64url parts
+  created_at timestamptz not null default now(),
+  last_seen_at timestamptz
+);
+
+-- Sessions: one row per signed-in browser. The cookie carries only the id;
+-- the token is stored hashed, so a database leak does not hand over logins.
+create table if not exists sessions (
+  id text primary key,
+  user_id text not null references users (id) on delete cascade,
+  token_hash text not null unique, -- sha256 of the cookie value
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null, -- sliding: renewed on use, max 30 days
+  user_agent text
+);
+
+create index if not exists sessions_user on sessions (user_id);
+create index if not exists sessions_expiry on sessions (expires_at);
+
+-- Password reset: one row per "forgot password" request. The email carries
+-- only the raw token; the table keeps its hash, single use, 30 minutes to live.
+create table if not exists password_resets (
+  id text primary key,
+  user_id text not null references users (id) on delete cascade,
+  token_hash text not null unique, -- sha256 of the emailed token
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  used_at timestamptz
+);
+
+create index if not exists password_resets_expiry on password_resets (expires_at);
+
+-- The reader's avatar, stored as a small data URL (128px jpeg the browser
+-- resizes before upload) — self-hosted like everything else about accounts.
+alter table users add column if not exists avatar text;

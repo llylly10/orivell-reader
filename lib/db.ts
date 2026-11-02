@@ -1,22 +1,50 @@
 /**
- * Postgres on Neon, over its HTTP driver: one round trip per query, no pool
- * to manage in serverless functions. Server-side only.
+ * Postgres, over postgres.js: plain TCP, so the same DATABASE_URL works against
+ * Neon today and a self-hosted server tomorrow — only the URL changes. Server-side only.
+ *
+ * The face below mirrors the Neon HTTP client's, so callers keep their shape:
+ * a tagged template (db()`select …`) and .query() that resolve to plain row
+ * arrays, plus .transaction() that takes query specs and answers one result
+ * array per spec, all inside one BEGIN/COMMIT.
  */
 
-import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
+import postgres from "postgres";
 
-let client: NeonQueryFunction<false, false> | null = null;
+let client: postgres.Sql | null = null;
 
 /** True when a database is configured. The app works without one — only the account features need it. */
 export const hasDatabase = () => Boolean(process.env.DATABASE_URL);
 
-export function db() {
+type Row = Record<string, unknown>;
+type Spec = { text: string; params?: unknown[] };
+
+export type Db = {
+  (text: TemplateStringsArray, ...params: unknown[]): Promise<Row[]>;
+  query: <T = Row>(text: string, params?: unknown[]) => Promise<T[]>;
+  transaction: (specs: Spec[]) => Promise<Row[][]>;
+};
+
+export function db(): Db {
   if (!client) {
     const url = process.env.DATABASE_URL;
     if (!url) throw new Error("DATABASE_URL is not set.");
-    client = neon(url);
+    // prepare:false keeps the driver safe behind transaction-mode poolers
+    // (Neon's pooled endpoint); on a direct connection it costs nothing.
+    client = postgres(url, { prepare: false, max: 5 });
   }
-  return client;
+  const sql = client;
+  const face = ((text: TemplateStringsArray, ...params: unknown[]) =>
+    sql(text, ...(params as never[]))) as unknown as Db;
+  face.query = async <T = Row>(text: string, params?: unknown[]) =>
+    (await sql.unsafe(text, (params ?? []) as never[])) as unknown as T[];
+  face.transaction = async (specs) => {
+    return (await sql.begin(async (tx) => {
+      const out: Row[][] = [];
+      for (const s of specs) out.push((await tx.unsafe(s.text, (s.params ?? []) as never[])) as unknown as Row[]);
+      return out;
+    })) as unknown as Row[][];
+  };
+  return face;
 }
 
 /** The tables the sync route reads and writes. Names are only ever taken from this list. */
@@ -29,32 +57,34 @@ export type PullRow = { id: string; articleId: string; data: unknown; deleted: b
 
 /** Rows changed since `since` in every collection, tombstones included, plus the server clock to pull from next time. */
 export async function pullRows(userId: string, since: string): Promise<{ now: string; changes: Record<Collection, PullRow[]> }> {
-  const sql = db();
-  const [clock, ...results] = await sql.transaction([
-    sql.query("select now() as now"),
-    ...COLLECTIONS.map((t) =>
-      sql.query(`select id, article_id, data, deleted from ${t} where user_id = $1 and updated_at > $2 order by updated_at`, [userId, since])
-    ),
+  const [clock, ...results] = await db().transaction([
+    { text: "select now() as now" },
+    ...COLLECTIONS.map((t) => ({
+      text: `select id, article_id, data, deleted from ${t} where user_id = $1 and updated_at > $2 order by updated_at`,
+      params: [userId, since],
+    })),
   ]);
   const changes = Object.fromEntries(
     COLLECTIONS.map((t, i) => [
       t,
-      (results[i] as Record<string, unknown>[]).map((r) => ({ id: String(r.id), articleId: String(r.article_id), data: r.deleted ? null : r.data, deleted: Boolean(r.deleted) })),
+      ((results[i] ?? []) as Record<string, unknown>[]).map((r) => ({ id: String(r.id), articleId: String(r.article_id), data: r.deleted ? null : r.data, deleted: Boolean(r.deleted) })),
     ])
   ) as Record<Collection, PullRow[]>;
-  return { now: new Date((clock as { now: string }[])[0].now).toISOString(), changes };
+  return { now: new Date((clock as { now: Date | string }[])[0].now).toISOString(), changes };
 }
 
 /** Upsert every collection's rows in one transaction. The server stamps the time, so the latest write wins. */
 export async function pushRows(userId: string, changes: Partial<Record<Collection, PushRow[]>>): Promise<void> {
-  const sql = db();
-  const queries = Object.entries(changes)
+  const specs: Spec[] = Object.entries(changes)
     .filter(([t, rows]) => isCollection(t) && rows?.length)
-    .map(([t, rows]) => sql.query(upsert(t as Collection), [userId, JSON.stringify(rows)]));
+    // The row array goes in as a JS value, not a pre-serialized string: the
+    // driver sees the ::jsonb cast and serializes it itself, and a string
+    // param would arrive double-encoded (a jsonb scalar, not an array).
+    .map(([t, rows]) => ({ text: upsert(t as Collection), params: [userId, rows] }));
   // A text taken off the shelf takes its painted cover with it.
   const gone = (changes.articles ?? []).filter((r) => r.deleted).map((r) => r.id);
-  if (gone.length) queries.push(sql.query("delete from covers where user_id = $1 and id = any($2::text[])", [userId, gone]));
-  if (queries.length) await sql.transaction(queries);
+  if (gone.length) specs.push({ text: "delete from covers where user_id = $1 and id = any($2::text[])", params: [userId, gone] });
+  if (specs.length) await db().transaction(specs);
 }
 
 /** One article's full text. */
@@ -100,7 +130,7 @@ export async function createToken(userId: string, id: string, hash: string, labe
 
 export async function listTokens(userId: string): Promise<AgentToken[]> {
   const rows = await db().query("select id, label, created_at, last_used_at from agent_tokens where user_id = $1 and not revoked order by created_at desc", [userId]);
-  return rows.map((r) => ({ id: String(r.id), label: String(r.label), createdAt: new Date(r.created_at).toISOString(), lastUsedAt: r.last_used_at ? new Date(r.last_used_at).toISOString() : null }));
+  return rows.map((r) => ({ id: String(r.id), label: String(r.label), createdAt: new Date(r.created_at as string | Date).toISOString(), lastUsedAt: r.last_used_at ? new Date(r.last_used_at as string | Date).toISOString() : null }));
 }
 
 export async function revokeToken(userId: string, id: string): Promise<boolean> {

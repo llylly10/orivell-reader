@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUp, BadgeCheck, BookA, Check, Copy, Ellipsis, Eraser, Feather, Highlighter, Lightbulb, PenLine, Scale, Waypoints, type LucideIcon } from "lucide-react";
+import { ArrowUp, BadgeCheck, BookA, Check, Copy, Ellipsis, Eraser, Feather, Highlighter, Languages, Lightbulb, PenLine, Scale, Waypoints, type LucideIcon } from "lucide-react";
 import { isShortSelection, type Action } from "@/lib/actions";
 import { MARKERS, type Marker } from "@/lib/settings";
 import { anchorToRange, selectionToAnchor } from "@/lib/anchor";
@@ -25,6 +25,7 @@ const ICONS: Partial<Record<Action, LucideIcon>> = {
   check: BadgeCheck,
   connect: Waypoints,
   counter: Scale,
+  translate: Languages,
 };
 
 /**
@@ -289,7 +290,7 @@ export function Lens({ rootEl, openHighlight }: { rootEl: HTMLElement | null; op
 
   const short = isShortSelection(lens.anchor.quote);
   const primary: Action[] = ["explain", short ? "define" : "simplify"];
-  const more: Action[] = [short ? "simplify" : "define", "check", "connect", "counter"];
+  const more: Action[] = [short ? "simplify" : "define", "translate", "check", "connect", "counter"];
   const existing = lens.highlightId ? useStore.getState().highlights[ix.article.id]?.find((h) => h.id === lens.highlightId) : undefined;
   const markerColor = MARKERS.find((m) => m.key === marker)?.color;
 

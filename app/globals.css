@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ==========================================================================
-   Gloss. A critical edition for anything you read.
+   Orivell. A critical edition for anything you read.
    Paper, ink, a yellow highlighter for you and a vermilion pen for the model.
    ========================================================================== */
 
@@ -422,6 +422,49 @@ kbd,
 .prose-read .blk-text {
   display: block;
   text-wrap: pretty;
+}
+
+/*
+ * Whole-article translation. "inline" is rendered inside the block itself;
+ * these rules cover the other two layouts chosen in settings.
+ */
+.prose-read .trans-side {
+  padding-top: 0.12em;
+  font-size: 0.95em;
+  line-height: 1.62;
+  color: var(--ink-3);
+  text-wrap: pretty;
+}
+
+/* Not wide enough for two readable columns: the translation drops under its paragraph. */
+.prose-read .trans-side {
+  margin-top: 0.45em;
+  border-left: 2px solid var(--rule);
+  padding-left: 0.75rem;
+}
+
+/* Side by side needs room: widen the measure and pair each block with its translation. */
+@media (min-width: 1360px) {
+  .reader-grid:has(.trans-pair) {
+    --m: min(calc(var(--read-size) * var(--measure-k) * 1.6), 80rem);
+  }
+
+  .prose-read .trans-pair {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0 2.5rem;
+    align-items: start;
+  }
+
+  .prose-read .trans-pair.is-full {
+    display: block;
+  }
+
+  .prose-read .trans-side {
+    margin-top: 0;
+    border-left: 0;
+    padding-left: 0;
+  }
 }
 
 .prose-read .blk[data-type="h2"] {

@@ -7,29 +7,10 @@ import { MODELS, type ModelKey } from "@/lib/models";
 import { applySettings, DEFAULT_SETTINGS, FACES, MARKERS, PENS, resolveTheme, THEMES, type Settings } from "@/lib/settings";
 import { useStore } from "@/lib/store";
 import { Popover, barBtn } from "./Popover";
+import { Seg } from "./Seg";
 import { setLibraryPrefs, useLibraryPrefs } from "@/lib/library-prefs";
 import { LANGS, type Lang } from "@/lib/i18n";
 import { useLang, useT } from "@/lib/lang-context";
-
-function Seg<T extends string>({ value, options, onChange, label }: { value: T; options: { key: T; label: ReactNode }[]; onChange: (v: T) => void; label: string }) {
-  return (
-    <div role="radiogroup" aria-label={label} className="grid rounded-[10px] bg-sunk p-[3px]" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
-      {options.map((o) => (
-        <button
-          key={o.key}
-          type="button"
-          role="radio"
-          aria-checked={value === o.key}
-          onClick={() => onChange(o.key)}
-          className={`inline-flex h-7 items-center justify-center gap-1.5 rounded-[8px] text-[12.5px] font-medium transition-colors ${value === o.key ? "bg-pill text-ink shadow-[0_1px_2px_rgb(0_0_0/0.1)]" : "text-ink-3 hover:text-ink"}`}
-        >
-          {/* Optically centred: the pill's shadow weighs its bottom edge, so the label sits a pixel lower. */}
-          <span className="inline-flex translate-y-px items-center gap-1.5">{o.label}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -340,39 +321,6 @@ function CnAccounts() {
         })}
       </div>
       {err && <p className="text-[12px] leading-snug text-[#c0392b]">{err}</p>}
-    </div>
-  );
-}
-
-/** 扫描版 PDF 识别：引擎切换（云端视觉模型 / 本地 Indra OCR）。模型名在密钥弹窗里配。 */
-function VisionOcr() {
-  const t = useT();
-  const [engine, setEngineState] = useState<"cloud" | "local">("cloud");
-
-  useEffect(() => {
-    import("@/lib/ask").then(({ readVisionEngine }) => setEngineState(readVisionEngine()));
-  }, []);
-
-  const setEngine = (e: "cloud" | "local") => {
-    setEngineState(e);
-    import("@/lib/ask").then(({ saveVisionEngine }) => saveVisionEngine(e));
-  };
-
-  return (
-    <div className="space-y-3">
-      <p className="text-[12px] leading-snug text-ink-3">{t("vision.blurb")}</p>
-      <Row label={t("vision.engine")}>
-        <Seg
-          label={t("vision.engine")}
-          value={engine}
-          onChange={setEngine}
-          options={[
-            { key: "cloud", label: t("vision.cloud") },
-            { key: "local", label: t("vision.local") },
-          ]}
-        />
-      </Row>
-      <p className="text-[11px] leading-snug text-ink-4">{engine === "cloud" ? t("vision.cloudHint") : t("vision.localHint")}</p>
     </div>
   );
 }
@@ -865,6 +813,18 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
                   ]}
                 />
               </Row>
+              <Row label={t("settings.translation")}>
+                <Seg
+                  label={t("settings.translationLayout")}
+                  value={settings.transLayout}
+                  onChange={(v) => set({ transLayout: v })}
+                  options={[
+                    { key: "inline", label: t("opt.inline") },
+                    { key: "end", label: t("opt.atEnd") },
+                    { key: "columns", label: t("opt.columns") },
+                  ]}
+                />
+              </Row>
               {(["face", "size", "leading", "width", "align", "paras"] as const).some((k) => settings[k] !== DEFAULT_SETTINGS[k]) && (
                 <button
                   type="button"
@@ -912,7 +872,6 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
               <AutoShelve />
               <SemanticIndex />
               <CnAccounts />
-              <VisionOcr />
               <Duplicates />
             </div>
           )}

@@ -39,7 +39,22 @@ export type Settings = {
   rail: boolean;
   /** Read aloud. Off by default: when on, a listen button joins the reader's top bar. */
   listen: boolean;
+  /**
+   * How a whole-article translation is laid out. "inline" puts each paragraph's
+   * translation right under it; "end" keeps the article untouched and appends one
+   * continuous translation at the foot; "columns" sets source and translation side
+   * by side, falling back to "inline" under 1100px.
+   */
+  transLayout: TranslationLayout;
 };
+
+export type TranslationLayout = "inline" | "end" | "columns";
+
+export const TRANSLATION_LAYOUTS: { key: TranslationLayout; label: string }[] = [
+  { key: "inline", label: "Inline" },
+  { key: "end", label: "At the end" },
+  { key: "columns", label: "Side by side" },
+];
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: "auto",
@@ -57,6 +72,7 @@ export const DEFAULT_SETTINGS: Settings = {
   numbers: false,
   rail: true,
   listen: false,
+  transLayout: "inline",
 };
 
 /** Swatch colours for the settings panel. The real palettes live in globals.css. */

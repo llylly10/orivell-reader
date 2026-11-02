@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { KeyRound } from "lucide-react";
-import { validateKey, readModelName, saveModelName, readAiBase, saveAiBase, readImageModel, saveImageModel, readImageBase, saveImageBase, readImageKey, saveImageKey, readVisionModel, saveVisionModel, readVisionBase, saveVisionBase, readVisionKey, saveVisionKey } from "@/lib/ask";
-import { BRAND } from "@/lib/brand";
+import { validateKey, readModelName, saveModelName, readAiBase, saveAiBase, readImageModel, saveImageModel, readImageBase, saveImageBase, readImageKey, saveImageKey, readVisionModel, saveVisionModel, readVisionBase, saveVisionBase, readVisionKey, saveVisionKey, readVisionEngine, saveVisionEngine } from "@/lib/ask";
 import { useT } from "@/lib/lang-context";
 import { Popover, barBtn } from "./Popover";
+import { Seg } from "./Seg";
 
 const STORAGE_KEY = "together:api-key";
 
@@ -87,7 +87,19 @@ function KeyPanel({ current, house, free, onSave, close }: { current: string; ho
   const [visBase, setVisBase] = useState(readVisionBase());
   const [visKey, setVisKey] = useState(readVisionKey());
   const [visModel, setVisModel] = useState(readVisionModel());
+  // Which engine reads scanned PDFs. Kept beside its three settings, since the
+  // cloud fields only mean anything when the cloud engine is the one chosen.
+  const [engine, setEngine] = useState<"cloud" | "local">("cloud");
   const [state, setState] = useState<"idle" | "checking" | "bad">("idle");
+
+  useEffect(() => {
+    setEngine(readVisionEngine());
+  }, []);
+
+  const pickEngine = (v: "cloud" | "local") => {
+    setEngine(v);
+    saveVisionEngine(v);
+  };
 
   const save = async () => {
     const v = draft.trim();
@@ -129,64 +141,83 @@ function KeyPanel({ current, house, free, onSave, close }: { current: string; ho
   };
 
   return (
-    <div>
-      <p className="text-[13.5px] font-medium text-ink">{t("key.title")}</p>
-      <p className="mt-1 text-[12.5px] leading-snug text-ink-3">
-        {current ? t("key.hint") : house && free ? t("key.signInMore") : t("topbar.addKey")}
-      </p>
-      {!current && house && free && (
-        <div className="mt-3">
-          <div className="flex items-baseline justify-between text-[11.5px] text-ink-3">
-            <span>{t("key.freeToday")}</span>
-            <span className="tabular-nums">{free.left > 0 ? `${Math.max(1, Math.round(free.left * 100))}% left` : "Used up"}</span>
+    <div className="flex max-h-[min(74vh,660px)] flex-col">
+      <div className="-mr-1.5 min-h-0 flex-1 overflow-y-auto pr-1.5">
+        <p className="text-[13.5px] font-medium text-ink">{t("key.title")}</p>
+        <p className="mt-1 text-[12.5px] leading-snug text-ink-3">
+          {current ? t("key.hint") : house && free ? t("key.signInMore") : t("topbar.addKey")}
+        </p>
+        {!current && house && free && (
+          <div className="mt-3">
+            <div className="flex items-baseline justify-between text-[11.5px] text-ink-3">
+              <span>{t("key.freeToday")}</span>
+              <span className="tabular-nums">{free.left > 0 ? `${Math.max(1, Math.round(free.left * 100))}% left` : "Used up"}</span>
+            </div>
+            <span className="mt-1.5 block h-[3px] overflow-hidden rounded-full bg-rule" aria-hidden>
+              <span className="block h-full rounded-full bg-[var(--rubric)] transition-[width] duration-500" style={{ width: `${Math.round(free.left * 100)}%` }} />
+            </span>
           </div>
-          <span className="mt-1.5 block h-[3px] overflow-hidden rounded-full bg-rule" aria-hidden>
-            <span className="block h-full rounded-full bg-[var(--rubric)] transition-[width] duration-500" style={{ width: `${Math.round(free.left * 100)}%` }} />
-          </span>
+        )}
+        <p className="mt-3 text-[11.5px] font-medium text-ink-2">{t("key.mainGroup")}</p>
+        <input
+          type="password"
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setState("idle");
+          }}
+          onKeyDown={(e) => e.key === "Enter" && save()}
+          placeholder="tgp_v1_..."
+          autoComplete="off"
+          spellCheck={false}
+          aria-label={t("key.title")}
+          className="mt-1.5 h-9 w-full rounded-lg border border-rule bg-bg px-3 text-[13px] tracking-wide text-ink outline-none focus-visible:outline-none placeholder:text-ink-4 focus:border-rule-strong"
+        />
+        <Field label={t("key.modelLabel")} value={model} onChange={setModel} placeholder="qwen-plus / glm-4.7-flash…" />
+        <div className="mt-2.5">
+          <Field label={t("key.baseLabel")} value={base} onChange={setBase} placeholder="https://dashscope.aliyuncs.com/compatible…" />
         </div>
-      )}
-      <p className="mt-3 text-[11.5px] font-medium text-ink-2">{t("key.mainGroup")}</p>
-      <input
-        type="password"
-        value={draft}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          setState("idle");
-        }}
-        onKeyDown={(e) => e.key === "Enter" && save()}
-        placeholder="tgp_v1_..."
-        autoComplete="off"
-        spellCheck={false}
-        aria-label={t("key.title")}
-        className="mt-1.5 h-9 w-full rounded-lg border border-rule bg-bg px-3 text-[13px] tracking-wide text-ink outline-none focus-visible:outline-none placeholder:text-ink-4 focus:border-rule-strong"
-      />
-      <Field label={t("key.modelLabel")} value={model} onChange={setModel} placeholder="qwen-plus / glm-4.7-flash…" />
-      <div className="mt-2.5">
-        <Field label={t("key.baseLabel")} value={base} onChange={setBase} placeholder="https://dashscope.aliyuncs.com/compatible…" />
-      </div>
-      {state === "bad" && <p className="mt-2 text-[12.5px] text-rubric-text">Together rejected that key. Check it and try again.</p>}
+        {state === "bad" && <p className="mt-2 text-[12.5px] text-rubric-text">That key was rejected. Check it and try again.</p>}
 
-      <p className="mt-4 text-[11.5px] font-medium text-ink-2">{t("key.coverGroup")}</p>
-      <p className="mt-0.5 text-[11px] leading-snug text-ink-4">{t("key.coverGroupHint")}</p>
-      <div className="mt-1.5 space-y-2">
-        <Field label={t("key.groupModel")} value={imgModel} onChange={setImgModel} placeholder="wanx2.1-t2i-turbo…" />
-        <Field label={t("key.groupBase")} value={imgBase} onChange={setImgBase} placeholder={t("key.groupBaseFallback")} />
-        <Field label={t("key.groupKey")} value={imgKey} onChange={setImgKey} placeholder={t("key.groupKeyFallback")} type="password" />
-      </div>
+        <p className="mt-4 text-[11.5px] font-medium text-ink-2">{t("key.coverGroup")}</p>
+        <p className="mt-0.5 text-[11px] leading-snug text-ink-4">{t("key.coverGroupHint")}</p>
+        <div className="mt-1.5 space-y-2">
+          <Field label={t("key.groupModel")} value={imgModel} onChange={setImgModel} placeholder="wanx2.1-t2i-turbo…" />
+          <Field label={t("key.groupBase")} value={imgBase} onChange={setImgBase} placeholder={t("key.groupBaseFallback")} />
+          <Field label={t("key.groupKey")} value={imgKey} onChange={setImgKey} placeholder={t("key.groupKeyFallback")} type="password" />
+        </div>
 
-      <p className="mt-4 text-[11.5px] font-medium text-ink-2">{t("key.visionGroup")}</p>
-      <p className="mt-0.5 text-[11px] leading-snug text-ink-4">{t("key.visionGroupHint")}</p>
-      <div className="mt-1.5 space-y-2">
-        <Field label={t("key.groupModel")} value={visModel} onChange={setVisModel} placeholder="qwen-vl-ocr…" />
-        <Field label={t("key.groupBase")} value={visBase} onChange={setVisBase} placeholder={t("key.groupBaseFallback")} />
-        <Field label={t("key.groupKey")} value={visKey} onChange={setVisKey} placeholder={t("key.groupKeyFallback")} type="password" />
-      </div>
+        <p className="mt-4 text-[11.5px] font-medium text-ink-2">{t("vision.title")}</p>
+        <p className="mt-0.5 text-[11px] leading-snug text-ink-4">{t("vision.blurb")}</p>
+        <div className="mt-1.5">
+          <Seg
+            label={t("vision.engine")}
+            value={engine}
+            onChange={pickEngine}
+            options={[
+              { key: "cloud", label: t("vision.cloud") },
+              { key: "local", label: t("vision.local") },
+            ]}
+          />
+        </div>
+        {engine === "cloud" ? (
+          <>
+            <p className="mt-1.5 text-[11px] leading-snug text-ink-4">{t("key.visionGroupHint")}</p>
+            <div className="mt-1.5 space-y-2">
+              <Field label={t("key.groupModel")} value={visModel} onChange={setVisModel} placeholder="qwen-vl-ocr…" />
+              <Field label={t("key.groupBase")} value={visBase} onChange={setVisBase} placeholder={t("key.groupBaseFallback")} />
+              <Field label={t("key.groupKey")} value={visKey} onChange={setVisKey} placeholder={t("key.groupKeyFallback")} type="password" />
+            </div>
+            <p className="mt-1.5 text-[11px] leading-snug text-ink-4">{t("vision.cloudHint")}</p>
+          </>
+        ) : (
+          <p className="mt-1.5 text-[11px] leading-snug text-ink-4">{t("vision.localHint")}</p>
+        )}
 
-      <p className="mt-3 text-[11px] leading-snug text-ink-4">Sent with your requests only. Stored in this browser, never on a server, never logged.</p>
-      <div className="mt-3 flex items-center justify-between">
-        <a href={BRAND.keysUrl} target="_blank" rel="noopener noreferrer" className="text-[12.5px] text-rubric-text underline decoration-rule-strong underline-offset-4">
-          Get a key on Together
-        </a>
+        <p className="mt-3 text-[11px] leading-snug text-ink-4">Sent with your requests only. Stored in this browser, never on a server, never logged.</p>
+      </div>
+      <div className="mt-3 flex items-center justify-between border-t border-rule pt-3">
+        <span className="text-[11px] text-ink-4">Get an API key from your provider.</span>
         <div className="flex gap-1.5">
           {current && (
             <button

@@ -21,6 +21,8 @@ type Props = {
   cursor: boolean;
   /** A whole-text question was asked from here. */
   hasAt: boolean;
+  /** The paragraph's translation, when whole-article translation is on. */
+  translation?: string;
   onAsk: (blockId: string) => void;
 };
 
@@ -221,7 +223,7 @@ function Table({ rows, head }: { rows: string[][]; head?: boolean }) {
   );
 }
 
-function BlockImpl({ block, n, first, marks, activeGloss, hoverGloss, activeHighlight, fresh, cursor, hasAt, onAsk }: Props) {
+function BlockImpl({ block, n, first, marks, activeGloss, hoverGloss, activeHighlight, fresh, cursor, hasAt, translation, onAsk }: Props) {
   const t = useT();
   const Tag = block.type === "h2" ? "h2" : block.type === "h3" ? "h3" : block.type === "figure" ? "figure" : "div";
   const content = segments(block, marks, activeGloss, hoverGloss, activeHighlight, fresh);
@@ -256,6 +258,9 @@ function BlockImpl({ block, n, first, marks, activeGloss, hoverGloss, activeHigh
       ) : (
         <span className="blk-text">{content}</span>
       )}
+      {translation && block.type !== "table" && block.type !== "figure" && (
+        <span className="mt-2 block border-l-2 border-rule pl-3 text-[0.95em] leading-[1.62] text-ink-3">{translation}</span>
+      )}
       {block.type === "quote" && block.quoteUrl && (
         <a className="quote-link" href={block.quoteUrl} target="_blank" rel="noopener noreferrer" aria-label={t("quote.open")}>
           <ArrowUpRight size={13} />
@@ -266,7 +271,7 @@ function BlockImpl({ block, n, first, marks, activeGloss, hoverGloss, activeHigh
 }
 
 export const Block = memo(BlockImpl, (a, b) => {
-  if (a.block !== b.block || a.n !== b.n || a.first !== b.first || a.cursor !== b.cursor || a.hasAt !== b.hasAt) return false;
+  if (a.block !== b.block || a.n !== b.n || a.first !== b.first || a.cursor !== b.cursor || a.hasAt !== b.hasAt || a.translation !== b.translation) return false;
   if (a.onAsk !== b.onAsk) return false;
   if (a.marks.length !== b.marks.length) return false;
   for (let i = 0; i < a.marks.length; i++) {

@@ -1,6 +1,6 @@
 /** Quick actions on a selection. Shared by the lens (labels) and the server (prompts). */
 
-export type Action = "ask" | "explain" | "define" | "simplify" | "check" | "connect" | "counter";
+export type Action = "ask" | "explain" | "define" | "simplify" | "translate" | "check" | "connect" | "counter";
 
 export const ACTIONS: Record<Action, { label: string; hint: string }> = {
   ask: { label: "Ask", hint: "Type any question about it" },
@@ -10,6 +10,7 @@ export const ACTIONS: Record<Action, { label: string; hint: string }> = {
   check: { label: "Fact-check", hint: "Does it still hold up? Searches the web" },
   connect: { label: "Related", hint: "Where else the text takes this up" },
   counter: { label: "Counterpoint", hint: "The strongest objection to it" },
+  translate: { label: "Translate", hint: "Into your language" },
 };
 
 /** Short selections get Define; longer ones get Simplify in the same slot. */
@@ -30,4 +31,5 @@ export const ACTION_QUESTIONS: Record<Action, string> = {
   check: "Does this still hold up?",
   connect: "Where else does the text take this up?",
   counter: "What is the strongest objection?",
+  translate: "What does this say in my language?",
 };

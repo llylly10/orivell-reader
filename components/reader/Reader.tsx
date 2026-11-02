@@ -2,13 +2,12 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, X } from "lucide-react";
+import { ArrowUpRight, Languages, X } from "lucide-react";
 import { blockEl, selectBlock, spanIn } from "@/lib/anchor";
 import { displayArticle, isHeading, readingMinutes, titleClass, type Article } from "@/lib/article";
 import { ARTICLE_QUESTIONS } from "@/lib/actions";
 import { SAMPLE_QUESTIONS } from "@/lib/samples";
-import { fetchBrief } from "@/lib/ask";
-import { BRAND } from "@/lib/brand";
+import { fetchBrief, loadTranslation, translateArticle, type ArticleTranslation } from "@/lib/ask";
 import { indexArticle } from "@/lib/doc";
 import { fetchText } from "@/lib/sync";
 import { loadDoc, useGlosses, useHighlights, useStore, type Anchor } from "@/lib/store";
@@ -120,6 +119,39 @@ function ReaderInner({ article }: { article: Article }) {
   const [pastTitle, setPastTitle] = useState(false);
   const [openHl, setOpenHl] = useState<OpenHighlight | null>(null);
   const [toast, setToast] = useState<null | { kind: "resume"; n: number } | { kind: "hint" }>(null);
+  const [trans, setTrans] = useState<ArticleTranslation | null>(null);
+  const [showTrans, setShowTrans] = useState(false);
+  const [transBusy, setTransBusy] = useState(false);
+  const [transError, setTransError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setTrans(loadTranslation(articleId));
+    setShowTrans(false);
+    setTransError(null);
+  }, [articleId]);
+
+  const toggleTranslate = async () => {
+    if (transBusy) return;
+    if (showTrans) {
+      setShowTrans(false);
+      return;
+    }
+    if (trans) {
+      setShowTrans(true);
+      return;
+    }
+    setTransBusy(true);
+    setTransError(null);
+    try {
+      const r = await translateArticle(ix);
+      setTrans(r);
+      setShowTrans(true);
+    } catch (e) {
+      setTransError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTransBusy(false);
+    }
+  };
 
   const glosses = useGlosses(articleId);
   const highlights = useHighlights(articleId);
@@ -134,6 +166,9 @@ function ReaderInner({ article }: { article: Article }) {
   const notebookOpen = useStore((s) => s.notebookOpen);
   const showNumbers = useStore((s) => s.settings.numbers);
   const showRail = useStore((s) => s.settings.rail);
+  const transLayout = useStore((s) => s.settings.transLayout);
+  /** Side-by-side only makes sense once there is a translation to put beside the text. */
+  const sideBySide = transLayout === "columns" && showTrans && !!trans;
   const hydrated = useStore((s) => s.hydrated);
   const setUI = useStore((s) => s.setUI);
   const setProgress = useStore((s) => s.setProgress);
@@ -522,6 +557,16 @@ function ReaderInner({ article }: { article: Article }) {
                       )}
                     </p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={toggleTranslate}
+                    disabled={transBusy}
+                    aria-pressed={showTrans}
+                    className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-rule px-3.5 text-[13px] font-medium text-ink-2 transition-[border-color,color,transform] hover:border-rule-strong hover:text-ink active:scale-[0.97] disabled:opacity-50"
+                  >
+                    <Languages size={14} strokeWidth={2} />
+                    {transBusy ? t("read.translating") : showTrans ? t("read.translateHide") : t("read.translateAll")}
+                  </button>
                   {article.sourceUrl && (
                     <a
                       href={article.sourceUrl}
@@ -533,6 +578,9 @@ function ReaderInner({ article }: { article: Article }) {
                     </a>
                   )}
                 </div>
+                {transError && (
+                  <p className="focus-hide mt-3 text-[12.5px] text-[var(--rubric)]">{transError}</p>
+                )}
                 {article.bookmark ? (
                   <div className="focus-hide rise mt-6 rounded-[14px] border border-rule bg-bg-raised p-4 text-[14px] leading-relaxed text-ink-2" style={{ animationDelay: "180ms" }} role="note">
                     <p className="font-medium text-ink">{t("read.savedAsLinkTitle")}</p>
@@ -554,22 +602,47 @@ function ReaderInner({ article }: { article: Article }) {
               </header>
 
               <div ref={setArticleEl} className="prose-read" onClick={onTextClick} onMouseOver={onTextOver} onMouseLeave={() => setUI({ hoverGloss: null })}>
-                {article.blocks.map((b) => (
-                  <Block
-                    key={b.id}
-                    block={b}
-                    n={ix.numbers.get(b.id)}
-                    first={b.id === firstPara}
-                    marks={marksByBlock.get(b.id) ?? EMPTY}
-                    activeGloss={activeGloss}
-                    hoverGloss={hoverGloss}
-                    activeHighlight={activeHighlight}
-                    fresh={enteringHighlight ?? enteringGloss}
-                    cursor={cursor === b.id}
-                    hasAt={atBlocks.has(b.id)}
-                    onAsk={onAskBlock}
-                  />
-                ))}
+                {article.blocks.map((b) => {
+                  const tr = showTrans && trans ? trans.paras[ix.numbers.get(b.id) ?? -1] : undefined;
+                  const block = (
+                    <Block
+                      key={b.id}
+                      block={b}
+                      n={ix.numbers.get(b.id)}
+                      translation={transLayout === "inline" ? tr : undefined}
+                      first={b.id === firstPara}
+                      marks={marksByBlock.get(b.id) ?? EMPTY}
+                      activeGloss={activeGloss}
+                      hoverGloss={hoverGloss}
+                      activeHighlight={activeHighlight}
+                      fresh={enteringHighlight ?? enteringGloss}
+                      cursor={cursor === b.id}
+                      hasAt={atBlocks.has(b.id)}
+                      onAsk={onAskBlock}
+                    />
+                  );
+                  if (!sideBySide) return block;
+                  // Headings, tables and figures have no translation: let them span both columns.
+                  const full = b.type === "h2" || b.type === "h3" || b.type === "table" || b.type === "figure";
+                  return (
+                    <div key={b.id} className={`trans-pair${full ? " is-full" : ""}`}>
+                      {block}
+                      {!full && <div className="trans-side">{tr ?? null}</div>}
+                    </div>
+                  );
+                })}
+                {transLayout === "end" && showTrans && trans && (
+                  <section className="trans-foot mt-10 border-t border-rule pt-8" aria-label={t("read.translationTitle")}>
+                    <h2 className="mb-6 font-serif text-[1.15em] leading-tight text-ink">{t("read.translationTitle")}</h2>
+                    {Object.entries(trans.paras)
+                      .sort((a, b) => Number(a[0]) - Number(b[0]))
+                      .map(([k, text]) => (
+                        <p key={k} className="mb-4 text-[0.95em] leading-[1.66] text-ink-2">
+                          {text}
+                        </p>
+                      ))}
+                  </section>
+                )}
               </div>
 
               <footer className="focus-hide mt-16 border-t border-rule pt-10 text-[13.5px] leading-relaxed text-ink-3">
@@ -577,13 +650,6 @@ function ReaderInner({ article }: { article: Article }) {
                   ❦
                 </p>
                 {article.source && <p>From {article.source}.</p>}
-                <p className="mt-1">
-                  Glosses are powered by DeepSeek V4.1 Flash, served by{" "}
-                  <a href={BRAND.togetherUrl} target="_blank" rel="noopener noreferrer" className="text-ink-2 underline decoration-rule-strong underline-offset-4 hover:text-ink">
-                    Together AI
-                  </a>
-                  .
-                </p>
                 <div className="mt-6 flex flex-wrap gap-2">
                   <button type="button" onClick={() => setUI({ notebookOpen: true })} className="h-9 rounded-full border border-rule px-4 text-[13px] font-medium text-ink-2 hover:border-rule-strong hover:text-ink">
                     {t("nb.title")}

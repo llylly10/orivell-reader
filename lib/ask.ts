@@ -6,6 +6,7 @@ import { docPayload, type DocIndex } from "./doc";
 import { uid, useStore, type Anchor, type Gloss, type Turn } from "./store";
 import type { ModelKey, StreamEvent, Usage } from "./models";
 import { MODELS, modelOf } from "./models";
+import { resolveLang } from "@/lib/i18n";
 
 const KEY_STORAGE = "together:api-key";
 const MODEL_STORAGE = "gloss:model-name";
@@ -232,9 +233,9 @@ async function stream(ix: DocIndex, glossId: string, modelKey: ModelKey) {
       body: JSON.stringify({
         apiKey: apiKey || undefined, modelName: readModelName() || undefined, baseUrl: readAiBase() || undefined,
         model: modelKey,
-        length: st.settings.length,
+        length: g.action === "translate" ? "full" : st.settings.length,
         doc: docPayload(ix, g.anchor?.start.b ?? g.at),
-        thread: { action: g.action, quote: g.anchor?.quote, from, to, at, question: g.question },
+        thread: { action: g.action, quote: g.anchor?.quote, from, to, at, question: g.question, lang: resolveLang() },
         history,
         search: st.settings.search,
       }),
@@ -442,4 +443,74 @@ export async function streamAsk(
   } catch (e) {
     if (!signal?.aborted) on.error?.(`Connection lost: ${String(e)}`);
   }
+}
+
+/* ---------------- whole-article translation ---------------- */
+
+const TRANS_PREFIX = "gloss:trans:";
+
+export type ArticleTranslation = { lang: string; paras: Record<number, string>; at: number };
+
+export function loadTranslation(articleId: string): ArticleTranslation | null {
+  try {
+    const raw = localStorage.getItem(TRANS_PREFIX + articleId);
+    if (!raw) return null;
+    const j = JSON.parse(raw) as ArticleTranslation;
+    if (j && j.paras && typeof j.paras === "object") return j;
+  } catch {}
+  return null;
+}
+
+/** Translates every paragraph of the article, in chunks, and caches the result locally. */
+export async function translateArticle(ix: DocIndex): Promise<ArticleTranslation> {
+  const lang = resolveLang();
+  const paras = ix.article.blocks
+    .filter((b) => ix.numbers.has(b.id))
+    .map((b) => ({ n: ix.numbers.get(b.id)!, text: (b.type === "table" ? "" : ix.texts.get(b.id) ?? "").trim() }))
+    .filter((p) => p.text.length > 0);
+
+  const CHUNK = 2800;
+  const chunks: { n: number; text: string }[][] = [];
+  let cur: { n: number; text: string }[] = [];
+  let size = 0;
+  for (const p of paras) {
+    if (cur.length && size + p.text.length > CHUNK) {
+      chunks.push(cur);
+      cur = [];
+      size = 0;
+    }
+    cur.push(p);
+    size += p.text.length;
+  }
+  if (cur.length) chunks.push(cur);
+
+  const st = useStore.getState();
+  const apiKey = readApiKey();
+  const out: Record<number, string> = {};
+  for (const chunk of chunks) {
+    const res = await fetch("/api/translate-article", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        apiKey: apiKey || undefined,
+        modelName: readModelName() || undefined,
+        baseUrl: readAiBase() || undefined,
+        model: modelOf(st.settings.model),
+        lang,
+        doc: { title: ix.article.title, author: ix.article.author, published: ix.article.published, paras: chunk },
+      }),
+    });
+    if (!res.ok) {
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(j.error ?? "Could not translate the article.");
+    }
+    const j = (await res.json()) as { translations?: Record<string, string> };
+    for (const [k, v] of Object.entries(j.translations ?? {})) out[Number(k)] = v;
+  }
+
+  const data: ArticleTranslation = { lang, paras: out, at: Date.now() };
+  try {
+    localStorage.setItem(TRANS_PREFIX + ix.article.id, JSON.stringify(data));
+  } catch {}
+  return data;
 }

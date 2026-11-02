@@ -17,6 +17,8 @@ export type ThreadPayload = {
   to?: number;
   at?: number;
   question?: string;
+  /** The reader's interface language, for the translate action. */
+  lang?: "en" | "zh";
 };
 
 /**
@@ -27,7 +29,7 @@ export type ThreadPayload = {
 export function systemFor(doc: DocPayload): string {
   const byline = [doc.author, doc.published].filter(Boolean).join(", ");
   const body = doc.paras.map((p) => `[¶${p.n}] ${p.text}`).join("\n\n");
-  return `You are Gloss, a reading companion. You write short notes in the margin of a text someone is studying closely. Think of a sharp, generous scholar leaning over their shoulder.
+  return `You are Orivell, a reading companion. You write short notes in the margin of a text someone is studying closely. Think of a sharp, generous scholar leaning over their shoulder.
 
 THE TEXT: "${doc.title}"${byline ? ` by ${byline}` : ""}.
 Paragraphs are numbered [¶n]; the reader sees the same numbers in the margin.${doc.partial ? "\nOnly part of a long text is included below; say so if a question needs the rest." : ""}
@@ -54,7 +56,13 @@ function where(t: ThreadPayload): string {
   return "";
 }
 
-const TASKS: Record<Exclude<Action, "ask">, string> = {
+/** The translate action: render the selection in the reader's own language, plain and faithful. */
+function translateTask(lang?: "en" | "zh"): string {
+  const target = lang === "en" ? "English" : "Simplified Chinese";
+  return "Translate this passage into " + target + ". Keep the meaning exact and read naturally in " + target + ", not word for word. Keep paragraph breaks, names, numbers and any citations or [¶n] markers exactly as they are. Return only the translation: no preamble, no commentary, no quotation marks around it, no ==markers==, no notes.";
+}
+
+const TASKS: Record<Exclude<Action, "ask" | "translate">, string> = {
   explain:
     "Explain what this passage means and what work it is doing at this point in the text. If it names a person, organisation, place or work, say who or what it is. If it uses archaic phrasing or a metaphor, unpack it; if it does not, do not mention it. 2 to 4 sentences.",
   define:
@@ -75,6 +83,7 @@ export function firstTurn(t: ThreadPayload): string {
     const loc = where(t);
     const head = `The reader selected this${loc ? ` in ${loc}` : ""}:\n«${t.quote.trim()}»`;
     if (t.action === "ask") return `${head}\n\nTheir question: ${t.question?.trim() || "What should I understand here?"}`;
+    if (t.action === "translate") return `${head}\n\nTask: ${translateTask(t.lang)}`;
     return `${head}\n\nTask: ${TASKS[t.action]}`;
   }
   // Whole-text question, asked from a reading position.
@@ -86,6 +95,7 @@ const LENGTHS = {
   short: "Length: very short. One to three sentences, under 50 words, unless a list of pointers is asked for.",
   normal: "Length: concise. Under 90 words unless the task asks for more.",
   long: "Length: thorough. Up to about 180 words, still with no filler.",
+  full: "Length: translate the whole passage in full, however long. Never shorten or summarise.",
 } as const;
 
 export type LengthKey = keyof typeof LENGTHS;

@@ -12,3 +12,15 @@ next-env.d.ts
 # local verification artefacts
 verify-shots/
 upstream-shots/
+.taste-skill/
+
+# Tauri / Android build output (500MB+, single files exceed GitHub's 100MB limit)
+src-tauri/gen/android/app/build/
+src-tauri/gen/android/build/
+src-tauri/gen/android/.gradle/
+
+# local database snapshots (contain personal library data)
+_neon_backup_*.json
+
+# machine-specific NDK linker paths — won't build anywhere but this machine
+.cargo/

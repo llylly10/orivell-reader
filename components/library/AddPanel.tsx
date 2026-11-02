@@ -1,6 +1,6 @@
 "use client";
 
-import { SignInButton } from "@clerk/nextjs";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BookOpen, BookmarkPlus, Check, Copy, Loader2, Plus, Trash2, X } from "lucide-react";
@@ -16,7 +16,7 @@ export type AddTab = "links" | "agent";
 
 /**
  * Adding to the library: paste links (one or many), or connect an agent that
- * saves to it through the Gloss MCP server.
+ * saves to it through the Orivell MCP server.
  */
 export function AddPanel({ tab, onTab, onClose, signedIn }: { tab: AddTab; onTab: (t: AddTab) => void; onClose: () => void; signedIn: boolean }) {
   useEffect(() => {
@@ -231,7 +231,7 @@ function Links() {
 }
 
 /**
- * Bookmarklets: one click on any page opens it in Gloss, in a new tab, to read now
+ * Bookmarklets: one click on any page opens it in Orivell, in a new tab, to read now
  * or to shelve for later (`/?url=` and `/?save=` on the home page).
  */
 function Bookmarklets() {
@@ -303,11 +303,9 @@ function Agent({ signedIn }: { signedIn: boolean }) {
       <div className="mt-5">
         <AgentIntro />
         <p className="mt-4 text-[13.5px] text-ink-2">{t("add.needsSignIn")}</p>
-        <SignInButton mode="modal">
-          <button type="button" className="add-btn mt-4">
-            {t("add.signInToConnect")}
-          </button>
-        </SignInButton>
+        <Link href="/sign-in" className="add-btn mt-4">
+          {t("add.signInToConnect")}
+        </Link>
       </div>
     );
 
@@ -386,7 +384,7 @@ function AgentIntro() {
   );
 }
 
-const PROMPT = "Go through my X bookmarks from the last month, find the ones that link to articles, essays or papers, and save those links to my Gloss library.";
+const PROMPT = "Go through my X bookmarks from the last month, find the ones that link to articles, essays or papers, and save those links to my Orivell library.";
 
 function Setup({ token, label, origin }: { token: string; label: string; origin: string }) {
   const url = `${origin}/mcp`;
@@ -394,11 +392,11 @@ function Setup({ token, label, origin }: { token: string; label: string; origin:
   const steps: { title: string; body: string; copy: string }[] =
     label === "Grok Bot" || label === "Grok"
       ? [
-          { title: "Grok Bot: say this in a chat", body: "It asks you to confirm; then the Gloss tools are ready.", copy: `Add a custom MCP server called Gloss at ${url} with the header Authorization set to Bearer ${token}` },
+          { title: "Grok Bot: say this in a chat", body: "It asks you to confirm; then the Orivell tools are ready.", copy: `Add a custom MCP server called Orivell at ${url} with the header Authorization set to Bearer ${token}` },
         ]
       : label === "Claude"
         ? [
-            { title: "Claude Code: run this", body: "Then ask Claude to save something to your Gloss library.", copy: `claude mcp add --transport http gloss ${url} --header "Authorization: Bearer ${token}"` },
+            { title: "Claude Code: run this", body: "Then ask Claude to save something to your Orivell library.", copy: `claude mcp add --transport http orivell ${url} --header "Authorization: Bearer ${token}"` },
             { title: "Or claude.ai: Settings, Connectors, Add custom connector", body: "This link carries your token, so keep it private.", copy: `${url}/${token}` },
           ]
         : [

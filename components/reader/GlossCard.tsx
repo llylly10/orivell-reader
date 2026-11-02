@@ -1,6 +1,6 @@
 "use client";
 
-import { Show, SignInButton } from "@clerk/nextjs";
+import { SignInLink } from "@/components/account/SignInLink";
 import { forwardRef, useEffect, useRef, useState, type CSSProperties } from "react";
 import { ArrowUp, Check, ChevronsDownUp, Copy, CornerDownRight, RotateCcw, Square, Trash2 } from "lucide-react";
 import { ACTIONS } from "@/lib/actions";
@@ -57,13 +57,7 @@ function KeyButton() {
       >
         {t("topbar.addKey")}
       </button>
-      <Show when="signed-out">
-        <SignInButton mode="modal">
-          <button type="button" className="inline-flex h-8 items-center rounded-full border border-rule px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:border-rule-strong hover:text-ink">
-            {t("topbar.signIn")}
-          </button>
-        </SignInButton>
-      </Show>
+      <SignInLink className="inline-flex h-8 items-center rounded-full border border-rule px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:border-rule-strong hover:text-ink" />
     </span>
   );
 }

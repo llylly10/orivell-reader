@@ -11,7 +11,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { auth } from "@clerk/nextjs/server";
+import { currentUser } from "@/lib/session";
 import { db } from "./db";
 import { allow, clientId } from "./ratelimit";
 
@@ -26,7 +26,7 @@ export type FreeState = { ok: boolean; left: number; signedIn: boolean; subject:
 async function who(req: Request) {
   let userId: string | null = null;
   try {
-    userId = (await auth()).userId;
+    userId = (await currentUser())?.id ?? null;
   } catch {}
   if (userId) return { subject: `free:user:${userId}`, limit: FREE_USD.user, signedIn: true };
   const ip = createHash("sha256").update(`gloss:${clientId(req)}`).digest("hex").slice(0, 32);
@@ -111,11 +111,11 @@ export function needKey(state: FreeState | null, message?: string): Response {
   const error =
     message ??
     (!state
-      ? "Add your Together API key to start. It stays in this browser."
+      ? "Add your API key to start. It stays in this browser."
       : state.reason === "everyone"
-        ? "Free answers are resting for today. Add your Together API key to keep going."
+        ? "Free answers are resting for today. Add your API key to keep going."
         : state.signedIn
-          ? "That's today's free reading. Add your Together API key to keep going, or come back tomorrow."
-          : "That's today's free reading. Sign in for more, or add your Together API key to keep going.");
+          ? "That's today's free reading. Add your API key to keep going, or come back tomorrow."
+          : "That's today's free reading. Sign in for more, or add your API key to keep going.");
   return Response.json({ error, code: "need_key", signIn: Boolean(state && !state.signedIn && state.reason === "reader") }, { status: state ? 429 : 401, headers: { "X-Free-Left": "0" } });
 }

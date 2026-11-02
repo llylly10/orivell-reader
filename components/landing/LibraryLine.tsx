@@ -102,7 +102,7 @@ export function LibraryLine({ saved }: { saved: Saved | null }) {
         </Link>
       ) : (
         <span className="lib-line-note">
-          {library.length === 1 ? t("lib.text", { n: library.length }) : t("lib.texts", { n: library.length })}
+          {library.length} {library.length === 1 ? t("lib.text") : t("lib.texts")}
         </span>
       )}
       {library.length > 0 && (

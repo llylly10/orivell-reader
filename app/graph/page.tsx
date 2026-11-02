@@ -583,7 +583,7 @@ export default function GraphPage() {
     <div className="flex h-screen flex-col bg-bg">
       <header className="flex items-center justify-between gap-3 px-5 pb-2.5 pt-3.5">
         <div className="flex items-baseline gap-3">
-          <span className="font-serif text-[17px] text-ink">Gloss</span>
+          <span className="font-serif text-[17px] text-ink">Orivell</span>
           <h1 className="text-[13px] text-ink-3">{t("graph.title")}</h1>
         </div>
         <div className="flex items-center gap-2">

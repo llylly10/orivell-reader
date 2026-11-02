@@ -172,8 +172,8 @@ export function ShelfSheet({
               </h2>
               <p className="mt-2 text-[13px] text-ink-3">
                 {view === "highlights"
-                  ? `${allHighlights.length} ${t("sheet.highlights")} · ${t("lib.texts", { n: items.length })}`
-                  : `${t("lib.texts", { n: items.length })}${counts.reading ? ` · ${t("lib.inProgress", { n: counts.reading })}` : ""}`}
+                  ? `${allHighlights.length} ${t("sheet.highlights")} · ${items.length} ${items.length === 1 ? t("lib.text") : t("lib.texts")}`
+                  : `${items.length} ${items.length === 1 ? t("lib.text") : t("lib.texts")}${counts.reading ? ` · ${t("lib.inProgress", { n: counts.reading })}` : ""}`}
               </p>
             </div>
             <label className="flex h-10 w-full items-center gap-2 rounded-full border border-rule bg-bg px-3.5 transition-colors focus-within:border-rule-strong sm:w-[300px]">

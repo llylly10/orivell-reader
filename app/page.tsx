@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import { auth } from "@clerk/nextjs/server";
+import { currentUser } from "@/lib/session";
 import { Landing } from "@/components/landing/Landing";
 
-export const metadata: Metadata = { title: "Gloss", alternates: { canonical: "/" } };
+export const metadata: Metadata = { title: "Orivell", alternates: { canonical: "/" } };
 
 export default async function Home() {
-  const { userId } = await auth();
+const me = await currentUser();
+  const userId = me?.id ?? null;
   return <Landing signedIn={Boolean(userId)} />;
 }

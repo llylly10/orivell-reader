@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
+import { useViewer } from "@/lib/viewer";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TopBar } from "@/components/ui/TopBar";
@@ -24,8 +24,8 @@ export function Landing({ signedIn: signedInAtLoad = false }: { signedIn?: boole
   const t = useT();
   const router = useRouter();
   // Known on the server at load, so a signed-in reader never sees the demo flash; then live, for a sign-in from this page.
-  const { isLoaded, isSignedIn } = useAuth();
-  const signedIn = isLoaded ? Boolean(isSignedIn) : signedInAtLoad;
+  const { loaded, id } = useViewer();
+  const signedIn = loaded ? Boolean(id) : signedInAtLoad;
   const hydrate = useStore((s) => s.hydrate);
   const hydrated = useStore((s) => s.hydrated);
   const library = useStore((s) => s.library);

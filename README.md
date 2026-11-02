@@ -1,10 +1,10 @@
 <a href="https://usegloss.io">
-  <img alt="Gloss" src="./public/og.png">
-  <h1 align="center">Gloss</h1>
+  <img alt="Orivell" src="./public/og.png">
+  <h1 align="center">Orivell</h1>
 </a>
 
 <p align="center">
-  An open source AI reader for articles and PDFs. Select any line, ask a question, and get a cited answer in the margin. Powered by Together.ai.
+  Explore ideas, deeply. An open source AI reader for articles and PDFs: select any line, ask a question, and get a cited answer in the margin.
 </p>
 
 ## Tech stack

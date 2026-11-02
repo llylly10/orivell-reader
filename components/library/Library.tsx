@@ -1,6 +1,6 @@
 "use client";
 
-import { useUser } from "@clerk/nextjs";
+import { useViewer } from "@/lib/viewer";
 import { useRouter } from "next/navigation";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, ViewTransition } from "react";
 import { ChevronLeft, ChevronRight, LayoutGrid, Library as LibraryIcon, PencilLine, Plus, Search, Share2, Trash2, X } from "lucide-react";
@@ -40,7 +40,7 @@ const SAMPLES_UNTIL = 6;
  */
 export function Library() {
   const router = useRouter();
-  const { user, isSignedIn } = useUser();
+  const { id, name } = useViewer();
   const t = useT();
   const { lang } = useLang();
   const hydrate = useStore((s) => s.hydrate);
@@ -255,8 +255,7 @@ export function Library() {
   );
 
   const openBook = open ? books.find((b) => b.id === open.id) ?? null : null;
-  const first = user?.firstName;
-  const owner = user?.fullName || first || "A Gloss reader";
+  const owner = name || "An Orivell reader";
   const T = topic ? shelfDef(topic, prefs.customShelves) : null;
   const topicBooks = useMemo(() => (topic ? books.filter((b) => b.topic === topic).sort((a, b) => b.added - a.added).filter(match) : []), [topic, books, match]);
   const screen = topic ? `topic-${topic}` : view;
@@ -297,7 +296,7 @@ export function Library() {
           <section className="lib-hero">
             <div className="lib-hero-row">
               <div className="min-w-0">
-                <h1 className="lib-title">{first ? t("lib.possessive", { name: first }) : t("lib.yourLibrary")}</h1>
+                <h1 className="lib-title">{name ? t("lib.possessive", { name }) : t("lib.yourLibrary")}</h1>
                 {/* Its height is kept while the shelf is read, so the tools below never jump. */}
                 <p className="lib-stats">
                   {hydrated && (
@@ -483,7 +482,7 @@ export function Library() {
                   </p>
                 )}
                 {hydrated && own.length < SAMPLES_UNTIL ? (
-                  <Starter count={own.length} signedIn={Boolean(isSignedIn)} onAdd={setAdding} />
+                  <Starter count={own.length} signedIn={Boolean(id)} onAdd={setAdding} />
                 ) : (
                   hydrated && <p className="lib-hint">{t("lib.clickSpine")}</p>
                 )}
@@ -568,7 +567,7 @@ export function Library() {
           }}
         />
       )}
-      {adding && <AddPanel tab={adding} onTab={setAdding} onClose={() => setAdding(null)} signedIn={Boolean(isSignedIn)} />}
+      {adding && <AddPanel tab={adding} onTab={setAdding} onClose={() => setAdding(null)} signedIn={Boolean(id)} />}
     </div>
   );
 }

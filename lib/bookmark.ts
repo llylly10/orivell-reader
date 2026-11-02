@@ -10,7 +10,7 @@ export const isTooLittle = (blocks: Block[], minWords = 80): boolean => {
   return blocks.filter((b) => b.type === "p").length < 2 || words < minWords;
 };
 
-export const BOOKMARK_NOTE = "This page has too little text to read as an article in Gloss, so it was saved as a link to look at later. Nothing was lost: the original page is one click away.";
+export const BOOKMARK_NOTE = "This page has too little text to read as an article in Orivell, so it was saved as a link to look at later. Nothing was lost: the original page is one click away.";
 
 /** The placeholder text a saved link carries: its own description when it has one, the note, and the way back out. */
 export function bookmarkBlocks(opts: { dek?: string; url: string }): Block[] {

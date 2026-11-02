@@ -82,7 +82,7 @@ export type LibraryItem = {
   finishedAt?: number;
   /** Saved as a link to look at later, because the page had too little text to read here. */
   bookmark?: boolean;
-  /** Shelved by an agent, through the Gloss MCP server. */
+  /** Shelved by an agent, through the Orivell MCP server. */
   addedBy?: "agent";
   /** Which connection an agent saved it through, by the name the reader gave it. */
   addedVia?: string;

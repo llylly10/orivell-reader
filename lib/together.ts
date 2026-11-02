@@ -10,7 +10,7 @@
  */
 
 export const TOGETHER_URL = "https://api.together.xyz/v1/chat/completions";
-export const APP_UA = "Gloss/0.1";
+export const APP_UA = "Orivell/0.1";
 
 /**
  * 自定义 OpenAI 兼容通道：设了 AI_BASE_URL 就把全部请求路由到自己的模型服务，

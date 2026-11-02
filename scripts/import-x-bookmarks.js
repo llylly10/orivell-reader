@@ -120,7 +120,7 @@ for (let i = 0; i < items.length; i += BATCH) {
      select $1, r.id, r.id, r.data, r.doc, false, now()
      from jsonb_to_recordset($2::jsonb) as r(id text, data jsonb, doc jsonb)
      on conflict (user_id, id) do update set
-       data = excluded.data, doc = excluded.doc, deleted = false, updated_at = now()`,
+       data = articles.data || excluded.data, doc = excluded.doc, deleted = false, updated_at = now()`,
     [userId, JSON.stringify(slice)]
   );
   done += slice.length;

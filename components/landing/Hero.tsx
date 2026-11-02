@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { useT } from "@/lib/lang-context";
 
 /**
- * The landing's top: what Gloss does, in one line, and the place to start.
+ * The landing's top: what Orivell does, in one line, and the place to start.
  * "any line" is marked the way a reader marks: the wash, then the pen under it.
  * The mark is a span either way, so the effect survives a translation.
  */

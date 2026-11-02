@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Show, SignInButton } from "@clerk/nextjs";
+import { SignInLink } from "@/components/account/SignInLink";
+import { useViewer } from "@/lib/viewer";
 import { Check, Copy, Download, Trash2, X } from "lucide-react";
 import { GlossMark } from "@/components/brand/Gloss";
 import { cmp } from "@/lib/anchor";
@@ -24,6 +25,8 @@ type Filter = "all" | "q" | "hl";
 /** Everything you marked and asked, in reading order, as questions and answers you can scan. */
 export function Notebook() {
   const { ix } = useReader();
+  const { loaded, id } = useViewer();
+  const signedOut = loaded && !id;
   const t = useT();
   const { lang } = useLang();
   const open = useStore((s) => s.notebookOpen);
@@ -155,17 +158,13 @@ export function Notebook() {
               </li>
             ))}
           </ol>
-          <Show when="signed-out">
+          {signedOut && (
             <p className="px-1 pb-1 pt-4 text-center text-[12.5px] leading-relaxed text-ink-3">
               {t("nb.localOnly")}{" "}
-              <SignInButton mode="modal">
-                <button type="button" className="font-medium text-ink-2 underline decoration-rule-strong underline-offset-4 transition-colors hover:text-ink">
-                  {t("topbar.signIn")}
-                </button>
-              </SignInButton>{" "}
+              <SignInLink className="font-medium text-ink-2 underline decoration-rule-strong underline-offset-4 transition-colors hover:text-ink" />{" "}
               {t("err.signInToSync")}
             </p>
-          </Show>
+          )}
         </div>
       )}
     </aside>

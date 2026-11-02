@@ -270,7 +270,7 @@ export function Shelf({
         <span style={{ background: "#a43848", width: 156, marginLeft: 3 }} />
       </div>
 
-      {width > 0 && placed.filter(({ at }) => at.row >= rowsOnScreen[0] && at.row <= rowsOnScreen[1]).map(({ b, at, out, jump }) => {
+      {width > 0 && placed.filter(({ b, at }) => b.id === openId || (at.row >= rowsOnScreen[0] && at.row <= rowsOnScreen[1])).map(({ b, at, out, jump }) => {
         const look = lookOf(b);
         const i = order.get(b.id) ?? 0;
         return (

@@ -1,6 +1,6 @@
 "use client";
 
-import { Show, SignInButton } from "@clerk/nextjs";
+import { SignInLink } from "@/components/account/SignInLink";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, ChevronDown, RotateCcw } from "lucide-react";
 import { fetchBrief, openKeyMenu } from "@/lib/ask";
@@ -55,13 +55,7 @@ export function Brief() {
             <button type="button" onClick={openKeyMenu} className="font-medium text-ink underline decoration-rule-strong underline-offset-4">
               {t("topbar.addKey")}
             </button>
-            <Show when="signed-out">
-              <SignInButton mode="modal">
-                <button type="button" className="font-medium text-ink underline decoration-rule-strong underline-offset-4">
-                  {t("topbar.signIn")}
-                </button>
-              </SignInButton>
-            </Show>
+            <SignInLink className="font-medium text-ink underline decoration-rule-strong underline-offset-4" />
           </>
         )}
         <button type="button" onClick={() => fetchBrief(ix)} className="font-medium text-ink underline decoration-rule-strong underline-offset-4">

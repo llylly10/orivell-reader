@@ -5,7 +5,7 @@ export const BRAND = {
 
 
 /** The social card. The version busts the caches of X, Slack and LinkedIn, which keep a card image by its URL. */
-export const OG_IMAGE = { url: "/og.jpg?v=3", width: 1200, height: 630, alt: "Orivell: explore ideas, deeply. Highlight any line, ask it anything." };
+export const OG_IMAGE = { url: "/og.jpg?v=4", width: 1200, height: 630, alt: "Orivell: 高亮任意一行，随便问点什么。" };
 
 /** The public origin, for canonical, sitemap and social card URLs. */
 export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3100");
